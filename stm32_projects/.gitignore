@@ -1,0 +1,34 @@
+# Ignore build files
+/build/
+CMakeCache.txt
+CMakeFiles/
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.obj
+*.json
+*.cmake
+
+# Ignore VS Code settings
+.vscode/
+*.code-workspace
+
+# Ignore temporary files
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+
+# Ignore logs
+*.log
+
+# Ignore auto-generated STM32Cube files
+STM32Cube*/Middlewares/
+STM32Cube*/Drivers/CMSIS/Documentation/
+
+# Ignore personal files
+*.DS_Store
+
