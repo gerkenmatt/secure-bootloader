@@ -48,8 +48,8 @@ void usart_init(void) {
 }
 
 void usart_putc( uint8_t ch) {
-    USART3->TDR = ch;
-    while (!(USART3->ISR & USART_ISR_TC));
+    USART6->TDR = ch;
+    while (!(USART6->ISR & USART_ISR_TC));
 }
 
 uint8_t usart_getc() {

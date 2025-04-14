@@ -6,25 +6,21 @@ import zlib
 from threading import Event
 
 # === Configuration ===
-ESP32_PORT = "/dev/rfcomm0"#ttyUSB0"
-STM32_PORT = "/dev/ttyACM1"
+ESP32_PORT = "/dev/rfcomm0"
 BAUDRATE = 115200
 CHUNK_SIZE = 128
 ACK_TIMEOUT = 2.0
-USE_CRC32 = True # Set to True to enable real CRC32
+USE_CRC32 = True
 
 # === Protocol Constants ===
 SOF  = 0xA5
 EOF  = 0xB6
-
 PACKET_CMD    = 0x01
 PACKET_HEADER = 0x02
 PACKET_DATA   = 0x03
 PACKET_RESP   = 0x04
-
 CMD_START = 0xA0
 CMD_END   = 0xA1
-
 RESP_ACK  = 0xAB
 RESP_NACK = 0xCD
 
@@ -62,7 +58,7 @@ def wait_for_ack(ser, timeout=ACK_TIMEOUT) -> bool:
 
     while time.time() - start < timeout:
         with ser_lock:
-            data = ser.read(10 - len(buffer))  # Read as many bytes as needed
+            data = ser.read(10 - len(buffer))
         if data:
             buffer.extend(data)
             if len(buffer) >= 10 and buffer[0] == SOF and buffer[1] == PACKET_RESP:
@@ -80,46 +76,39 @@ def wait_for_ack(ser, timeout=ACK_TIMEOUT) -> bool:
     print(RED + "Timeout: No valid ACK received" + RESET)
     return False
 
-
-
-def read_from_stm32(ser_stm32):
+def serial_log_printer(ser):
     while True:
         uart_reading_enabled.wait()
         try:
             with ser_lock:
-                line = ser_stm32.readline()
+                line = ser.readline()
             if line:
                 print("    " + GREEN + line.decode(errors='ignore').strip() + RESET)
         except:
             continue
 
 # === OTA Logic ===
-def send_cmd(ser_tx, ser_rx, cmd_id, wait=True):
-    ser_tx.write(build_frame(PACKET_CMD, bytes([cmd_id])))
-    if wait: 
-        return wait_for_ack(ser_rx)
-    else: 
-        return True
+def send_cmd(ser, cmd_id, wait=True):
+    ser.write(build_frame(PACKET_CMD, bytes([cmd_id])))
+    return wait_for_ack(ser) if wait else True
 
-def send_header(ser_tx, ser_rx, fw_size, fw_crc32, version=0):
+def send_header(ser, fw_size, fw_crc32, version=0):
     payload = struct.pack('<III', fw_size, fw_crc32, version) + b'\x00' * 4
-    ser_rx.reset_input_buffer()  # Clear STM32 UART buffer before waiting for ACK
-    ser_tx.write(build_frame(PACKET_HEADER, payload))
-    return wait_for_ack(ser_rx)
+    ser.reset_input_buffer()
+    ser.write(build_frame(PACKET_HEADER, payload))
+    return wait_for_ack(ser)
 
-
-def send_data_chunks(ser_tx, ser_rx, fw_data):
+def send_data_chunks(ser, fw_data):
     for i in range(0, len(fw_data), CHUNK_SIZE):
         print("sending chunk " + str(i))
         chunk = fw_data[i:i+CHUNK_SIZE]
-        ser_tx.write(build_frame(PACKET_DATA, chunk))
-
-        if not wait_for_ack(ser_rx):
+        ser.write(build_frame(PACKET_DATA, chunk))
+        if not wait_for_ack(ser):
             print(RED + f"  --> No ACK for chunk {i // CHUNK_SIZE}" + RESET)
             return False
     return True
 
-def send_ota_sequence(ser_tx, ser_rx, filepath):
+def send_ota_sequence(ser, filepath):
     try:
         with open(filepath, 'rb') as f:
             fw_data = f.read()
@@ -133,42 +122,36 @@ def send_ota_sequence(ser_tx, ser_rx, filepath):
     print(f"Firmware size: {fw_size} bytes")
     print(f"CRC32: 0x{fw_crc32:08X}")
 
-    # Disable UART reading when the OTA sequence is being sent
     uart_reading_enabled.clear()
 
-    # uart_reading_enabled.set()
-
     print("Sending OTA_START")
-    if not send_cmd(ser_tx, ser_rx, CMD_START):
+    if not send_cmd(ser, CMD_START):
         uart_reading_enabled.set()
         return
 
     print("Sending header")
-    if not send_header(ser_tx, ser_rx, fw_size, fw_crc32):
+    if not send_header(ser, fw_size, fw_crc32):
         uart_reading_enabled.set()
         return
 
     print("Sending firmware data...")
-    if not send_data_chunks(ser_tx, ser_rx, fw_data):
+    if not send_data_chunks(ser, fw_data):
         uart_reading_enabled.set()
         return
 
     uart_reading_enabled.set()
 
     print("Sending OTA_END")
-    send_cmd(ser_tx, ser_rx, CMD_END, wait=False)
-
+    send_cmd(ser, CMD_END, wait=False)
 
 # === Main Interface ===
 def main():
     while True:
         try:
-            with serial.Serial(ESP32_PORT, BAUDRATE, timeout=0.1) as ser_esp32, \
-                    serial.Serial(STM32_PORT, BAUDRATE, timeout=0.1) as ser_stm32:
-                
+            with serial.Serial(ESP32_PORT, BAUDRATE, timeout=0.1) as ser:
                 time.sleep(2)
                 print(CYAN + BOLD + "\r\nConnected. Type: ota, run, help, send\n" + RESET)
-                threading.Thread(target=read_from_stm32, args=(ser_stm32,), daemon=True).start()
+                threading.Thread(target=serial_log_printer, args=(ser,), daemon=True).start()
 
                 while True:
                     try:
@@ -177,15 +160,15 @@ def main():
                             continue
                         if cmd == "send":
                             filepath = input("Enter firmware file path: ").strip()
-                            send_ota_sequence(ser_esp32, ser_stm32, filepath)
+                            send_ota_sequence(ser, filepath)
                         else:
-                            ser_esp32.write((cmd + '\n').encode())
+                            ser.write((cmd + '\n').encode())
                     except KeyboardInterrupt:
                         print("\nExiting.")
                         return
         except serial.SerialException as e:
             print(RED + f"[Serial Error] {e}" + RESET)
-            print(f"Retrying in 5 seconds... ")
+            print("Retrying in 5 seconds...")
             time.sleep(5)
 
 if __name__ == "__main__":
