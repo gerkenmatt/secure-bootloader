@@ -6,8 +6,8 @@ import zlib
 from threading import Event
 
 # === Configuration ===
-ESP32_PORT = "/dev/ttyUSB0"
-STM32_PORT = "/dev/ttyACM0"
+ESP32_PORT = "/dev/rfcomm0"#ttyUSB0"
+STM32_PORT = "/dev/ttyACM1"
 BAUDRATE = 115200
 CHUNK_SIZE = 128
 ACK_TIMEOUT = 2.0

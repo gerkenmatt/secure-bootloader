@@ -12,7 +12,6 @@
 static ota_header_info_t ota_header;
 static uint32_t flash_write_addr = SLOT1_ADDR;
 
-
 void handle_ota_session(void) {
     log("Waiting for OTA packets...\r\n");
 
