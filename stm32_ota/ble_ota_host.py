@@ -4,10 +4,10 @@ import zlib
 from bleak import BleakClient, BleakScanner
 
 # === BLE Configuration ===
-DEVICE_NAME = "ESP32_OTA_BLE"
-SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab"
-CHAR_RX_UUID = "12345678-1234-1234-1234-1234567890ac"  # Write
-CHAR_TX_UUID = "12345678-1234-1234-1234-1234567890ad"  # Notify
+DEVICE_NAME    = "ESP32_OTA_BLE"
+SERVICE_UUID   = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+CHAR_RX_UUID   = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"  # Write to ESP32
+CHAR_TX_UUID   = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"  # Notify from ESP32
 
 # === OTA Protocol ===
 SOF = 0xA5
@@ -39,9 +39,17 @@ def build_frame(packet_type, payload: bytes) -> bytes:
 
 def handle_notification(_, data: bytearray):
     global last_status
+
+    # print(f"[BLE Notify] Raw: {data.hex()}")  # keep for debugging
+
     if len(data) >= 5 and data[0] == SOF and data[1] == PACKET_RESP:
         last_status = data[4]
         ack_event.set()
+    else:
+        try:
+            print(data.decode("utf-8").strip())
+        except UnicodeDecodeError:
+            print(f"[STM32] <binary: {data.hex()}>")
 
 async def wait_for_ack(timeout=2.0):
     global last_status
@@ -110,7 +118,7 @@ async def main():
         await client.start_notify(CHAR_TX_UUID, handle_notification)
 
         while True:
-            cmd = input("> ").strip()
+            cmd = await asyncio.to_thread(input, "> ")#input("> ").strip()
             if cmd == "send":
                 filepath = input("Enter firmware path: ").strip()
                 await send_ota_sequence(client, filepath)
