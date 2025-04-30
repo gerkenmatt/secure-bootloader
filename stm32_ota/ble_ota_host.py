@@ -131,9 +131,11 @@ async def main():
     try:
         async with BleakClient(device) as client:
             await client.start_notify(CHAR_TX_UUID, handle_notification)
-            print(CYAN + BOLD + "\r\nConnected. Type: send, exit/quit/q to leave\n" + RESET)
+            print(CYAN + BOLD + "\r\nConnected. Type: ota, run, help, send, quit/exit\n" + RESET)
             while True:
-                cmd = (await asyncio.to_thread(input, "> ")).strip().lower()
+                PROMPT = f"{CYAN}{BOLD}➜ {RESET}"
+                cmd = (await asyncio.to_thread(input, PROMPT)).strip().lower()
+
                 if cmd in ("exit", "quit", "q"):
                     break
                 elif cmd == "send":
