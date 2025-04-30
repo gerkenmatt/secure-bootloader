@@ -5,6 +5,8 @@
 #define STM32_RX 16  // ESP32 receives from STM32 TX
 #define STM32_TX 17  // ESP32 transmits to STM32 RX
 #define LED_PIN 2    // Onboard LED for status blinking
+#define OTA_SOF 0xA5
+#define OTA_EOF 0xB6
 
 // BLE UART characteristic handles
 NimBLECharacteristic *txChar;  // ESP32 → Host (Notify)
@@ -59,38 +61,41 @@ void setup() {
   Serial.println("BLE OTA bridge started");
 }
 
-// void loop() {
-//   static String buffer;
-
-//   while (Serial2.available()) {
-//     char c = Serial2.read();
-//     Serial.print("[UART RX] "); Serial.println(c);  // debug: print raw char
-//     buffer += c;
-
-//     if (c == '\n') {
-//       Serial.print("[UART LINE] "); Serial.println(buffer);  // debug
-//       txChar->setValue(buffer.c_str());
-//       txChar->notify();
-//       buffer = "";
-//     }
-//   }
-
-//   delay(1);  // allow BLE and serial background processing
-// }
-
-
 void loop() {
-  static unsigned long lastLog = 0;
   static String buffer;
 
-  // Send dummy data every 2 seconds
-  if (millis() - lastLog >= 2000) {
-    lastLog = millis();
-    String fakeLog = "Fake log line from ESP32\r\n";
-    txChar->setValue(fakeLog.c_str());
-    txChar->notify();
-    Serial.println("[DEBUG] Sent dummy log");
+  while (Serial2.available()) {
+    char c = Serial2.read();
+    buffer += c;
+
+    if (c == '\n') {
+      txChar->setValue((uint8_t*)buffer.c_str(), buffer.length());
+      txChar->notify();
+      Serial.print("[UART → BLE] "); Serial.println(buffer);
+      buffer = "";
+    }
+    if ((uint8_t)c == OTA_EOF) {
+      txChar->setValue((uint8_t*)buffer.c_str(), buffer.length());
+      txChar->notify();
+      buffer = "";
+    }
   }
 
-  delay(10); // allow BLE and stack time
+  delay(1); // yield to BLE stack
 }
+
+// void loop() {
+//   static unsigned long lastLog = 0;
+//   static String buffer;
+
+//   // Send dummy data every 2 seconds
+//   if (millis() - lastLog >= 2000) {
+//     lastLog = millis();
+//     const char* fakeLog = "Fake log line from ESP32\r\n";
+//     txChar->setValue((uint8_t*)fakeLog, strlen(fakeLog));
+//     txChar->notify();
+//     Serial.println("[DEBUG] Sent dummy log");
+//   }
+
+//   delay(10); // allow BLE and stack time
+// }

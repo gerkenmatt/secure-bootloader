@@ -22,6 +22,15 @@ RESP_ACK = 0xAB
 RESP_NACK = 0xCD
 CHUNK_SIZE = 128
 
+# === Color Codes ===
+RED = "\033[91m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+CYAN = "\033[96m"
+BLUE = "\033[94m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
 ack_event = asyncio.Event()
 last_status = None
 
@@ -39,32 +48,34 @@ def build_frame(packet_type, payload: bytes) -> bytes:
 
 def handle_notification(_, data: bytearray):
     global last_status
-
-    # print(f"[BLE Notify] Raw: {data.hex()}")  # keep for debugging
-
-    if len(data) >= 5 and data[0] == SOF and data[1] == PACKET_RESP:
-        last_status = data[4]
+    if len(data) >= 10 and data[0] == SOF and data[1] == PACKET_RESP:
+        status = data[4]
+        last_status = status
+        if status == RESP_ACK:
+            print(BLUE + "  --> ACK received" + RESET)
+        elif status == RESP_NACK:
+            print(RED + "  --> NACK received" + RESET)
         ack_event.set()
     else:
         try:
-            print(data.decode("utf-8").strip())
-        except UnicodeDecodeError:
-            print(f"[STM32] <binary: {data.hex()}>")
+            line = data.decode("utf-8").strip()
+            print("    " + GREEN + line + RESET)
+        except:
+            print("    " + GREEN + data.hex() + RESET)
 
 async def wait_for_ack(timeout=2.0):
-    global last_status
     try:
         await asyncio.wait_for(ack_event.wait(), timeout)
         ack_event.clear()
         return last_status == RESP_ACK
     except asyncio.TimeoutError:
-        print("Timeout waiting for ACK")
+        print(RED + "Timeout: No valid ACK received" + RESET)
         return False
 
-async def send_cmd(client, cmd_id):
+async def send_cmd(client, cmd_id, wait=True):
     frame = build_frame(PACKET_CMD, bytes([cmd_id]))
     await client.write_gatt_char(CHAR_RX_UUID, frame)
-    return await wait_for_ack()
+    return await wait_for_ack() if wait else True
 
 async def send_header(client, fw_size, fw_crc32):
     payload = struct.pack('<III', fw_size, fw_crc32, 0) + b'\x00' * 4
@@ -73,10 +84,11 @@ async def send_header(client, fw_size, fw_crc32):
 
 async def send_data_chunks(client, fw_data):
     for i in range(0, len(fw_data), CHUNK_SIZE):
+        print("sending chunk " + str(i))
         chunk = fw_data[i:i+CHUNK_SIZE]
         await client.write_gatt_char(CHAR_RX_UUID, build_frame(PACKET_DATA, chunk))
         if not await wait_for_ack():
-            print(f"NACK at chunk {i // CHUNK_SIZE}")
+            print(RED + f"  --> No ACK for chunk {i // CHUNK_SIZE}" + RESET)
             return False
     return True
 
@@ -85,18 +97,20 @@ async def send_ota_sequence(client, filepath):
         with open(filepath, "rb") as f:
             fw_data = f.read()
     except FileNotFoundError:
-        print("[Error] File not found:", filepath)
+        print(RED + f"[Error] File not found: {filepath}" + RESET)
         return
 
     fw_size = len(fw_data)
     fw_crc32 = crc32(fw_data)
-    print(f"Firmware size: {fw_size}, CRC32: 0x{fw_crc32:08X}")
 
-    print("Sending CMD_START...")
+    print(f"Firmware size: {fw_size} bytes")
+    print(f"CRC32: 0x{fw_crc32:08X}")
+
+    print("Sending OTA_START")
     if not await send_cmd(client, CMD_START):
         return
 
-    print("Sending header...")
+    print("Sending header")
     if not await send_header(client, fw_size, fw_crc32):
         return
 
@@ -104,30 +118,32 @@ async def send_ota_sequence(client, filepath):
     if not await send_data_chunks(client, fw_data):
         return
 
-    print("Sending CMD_END...")
-    await client.write_gatt_char(CHAR_RX_UUID, build_frame(PACKET_CMD, bytes([CMD_END])))
+    print("Sending OTA_END")
+    await send_cmd(client, CMD_END, wait=False)
 
 async def main():
-    print("Scanning for ESP32...")
+    print(CYAN + BOLD + "\r\nScanning for ESP32...\n" + RESET)
     device = await BleakScanner.find_device_by_filter(lambda d, _: d.name == DEVICE_NAME)
     if not device:
-        print("Device not found.")
+        print(RED + "Device not found." + RESET)
         return
 
-    async with BleakClient(device) as client:
-        await client.start_notify(CHAR_TX_UUID, handle_notification)
-
-        while True:
-            cmd = await asyncio.to_thread(input, "> ")#input("> ").strip()
-            if cmd == "send":
-                filepath = input("Enter firmware path: ").strip()
-                await send_ota_sequence(client, filepath)
-            elif cmd == "exit":
-                break
-            else:
-                await client.write_gatt_char(CHAR_RX_UUID, (cmd + "\n").encode())
-
-        await client.stop_notify(CHAR_TX_UUID)
+    try:
+        async with BleakClient(device) as client:
+            await client.start_notify(CHAR_TX_UUID, handle_notification)
+            print(CYAN + BOLD + "\r\nConnected. Type: send, exit/quit/q to leave\n" + RESET)
+            while True:
+                cmd = (await asyncio.to_thread(input, "> ")).strip().lower()
+                if cmd in ("exit", "quit", "q"):
+                    break
+                elif cmd == "send":
+                    filepath = input("Enter firmware path: ").strip()
+                    await send_ota_sequence(client, filepath)
+                else:
+                    await client.write_gatt_char(CHAR_RX_UUID, (cmd + "\n").encode())
+            await client.stop_notify(CHAR_TX_UUID)
+    except EOFError:
+        pass  # Ignore disconnect errors on exit
 
 if __name__ == "__main__":
     asyncio.run(main())
