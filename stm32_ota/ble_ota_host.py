@@ -16,6 +16,7 @@ PACKET_CMD = 0x01
 PACKET_HEADER = 0x02
 PACKET_DATA = 0x03
 PACKET_RESP = 0x04
+PACKET_SIG = 0x05
 CMD_START = 0xA0
 CMD_END = 0xA1
 RESP_ACK = 0xAB
@@ -92,12 +93,24 @@ async def send_data_chunks(client, fw_data):
             return False
     return True
 
-async def send_ota_sequence(client, filepath):
+async def send_sig_chunks(client, sig_data):
+    for i in range(0, len(sig_data), CHUNK_SIZE):
+        print(f"sending signature chunk {i}")
+        chunk = sig_data[i:i+CHUNK_SIZE]
+        await client.write_gatt_char(CHAR_RX_UUID, build_frame(PACKET_SIG, chunk))
+        if not await wait_for_ack():
+            print(RED + f"  --> No ACK for signature chunk {i // CHUNK_SIZE}" + RESET)
+            return False
+    return True
+
+async def send_ota_sequence(client, fw_path, sig_path):
     try:
-        with open(filepath, "rb") as f:
-            fw_data = f.read()
-    except FileNotFoundError:
-        print(RED + f"[Error] File not found: {filepath}" + RESET)
+        with open(fw_path, "rb") as f_fw:
+            fw_data = f_fw.read()
+        with open(sig_path, "rb") as f_sig:
+            sig_data = f_sig.read()
+    except FileNotFoundError as e:
+        print(RED + f"[Error] File not found: {e.filename}" + RESET)
         return
 
     fw_size = len(fw_data)
@@ -116,6 +129,10 @@ async def send_ota_sequence(client, filepath):
 
     print("Sending firmware data...")
     if not await send_data_chunks(client, fw_data):
+        return
+
+    print("Sending signature...")
+    if not await send_sig_chunks(client, sig_data):
         return
 
     print("Sending OTA_END")
@@ -139,8 +156,10 @@ async def main():
                 if cmd in ("exit", "quit", "q"):
                     break
                 elif cmd == "send":
-                    filepath = input("Enter firmware path: ").strip()
-                    await send_ota_sequence(client, filepath)
+                    base = input("Enter firmware name (e.g., blinky): ").strip()
+                    fw_path = f"firmware/{base}.bin"
+                    sig_path = f"firmware/{base}.sig"
+                    await send_ota_sequence(client, fw_path, sig_path)
                 else:
                     await client.write_gatt_char(CHAR_RX_UUID, (cmd + "\n").encode())
             await client.stop_notify(CHAR_TX_UUID)
