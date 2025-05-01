@@ -32,3 +32,6 @@ STM32Cube*/Drivers/CMSIS/Documentation/
 # Ignore personal files
 *.DS_Store
 
+# ignore Mbed TLS build artifacts
+/ secure_bootloader/lib/mbedtls/build/
+
