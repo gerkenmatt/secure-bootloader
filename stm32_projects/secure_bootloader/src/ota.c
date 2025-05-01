@@ -12,6 +12,16 @@
 static ota_header_info_t ota_header;
 static uint32_t flash_write_addr = SLOT1_ADDR;
 
+// storage for the incoming signature:
+static uint8_t  ota_signature[SIG_MAX_LEN];
+static uint16_t ota_sig_len;
+
+static const char firmware_pub_pem[] =
+"-----BEGIN PUBLIC KEY-----\n"
+"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEf+4s6HcLDTeocFcerXXR0FqdirYf\n"
+"8sCC+Nub9LtYSXLNu02/F7LXbVpf+c5h1Nv3C4PYYkhmiD2tmqLkl1wYmQ==\n"
+"-----END PUBLIC KEY-----\n";
+
 void handle_ota_session(void) {
     log("Waiting for OTA packets...\r\n");
 
@@ -30,6 +40,9 @@ void handle_ota_session(void) {
                     break;
                 case PACKET_DATA:   
                     handle_ota_data(&frame);    // Handle firmware data chunks
+                    break;
+                case PACKET_SIG:
+                    handle_ota_signature(&frame); // Handle firmware signature
                     break;
                 default:
                     // Invalid/unknown packet type
@@ -111,6 +124,7 @@ void handle_ota_command(const ota_frame_t* frame) {
 
     switch (frame->data[0]) {
         case CMD_START:
+            //TODO: should I put each case in its own function?
             // Clear any previous flash error flags
             FLASH->SR |= FLASH_SR_WRPERR | FLASH_SR_PGAERR | FLASH_SR_OPERR | 
                          FLASH_SR_PGPERR | FLASH_SR_ERSERR;
@@ -141,7 +155,17 @@ void handle_ota_command(const ota_frame_t* frame) {
         case CMD_END:
             log("Received OTA END\r\n");
 
-
+            // verify the signature on the new image in flash
+            if (!verify_signature(
+                    (uint8_t*)SLOT1_ADDR,
+                    ota_header.fw_size,
+                    ota_signature,
+                    ota_sig_len))
+            {
+                log("Signature verification failed\r\n");
+                ota_send_response(RESP_NACK);
+                return;
+            }
             bootloader_config_t cfg = *read_boot_config();  // Read current config
 
             // Update slot 1 metadata
@@ -236,4 +260,55 @@ void handle_ota_data(const ota_frame_t* frame) {
     }
 
     ota_send_response(RESP_ACK);
+}
+
+void handle_ota_signature(const ota_frame_t* frame) {
+    // sanity check
+    if (frame->length > SIG_MAX_LEN) {
+        ota_send_response(RESP_NACK);
+        log("Signature too large\r\n");
+        return;
+    }
+    // copy it into RAM
+    memcpy(ota_signature, frame->data, frame->length);
+    ota_sig_len = frame->length;
+    ota_send_response(RESP_ACK);
+}
+
+bool verify_signature(const uint8_t *data,
+                      uint32_t        data_len,
+                      const uint8_t  *sig,
+                      uint16_t        sig_len)
+{
+    int ret;
+    uint8_t hash[32];
+    mbedtls_pk_context pk;
+
+    // 1) Hash the firmware image with SHA-256
+    mbedtls_sha256_context sha_ctx;
+    mbedtls_sha256_init(&sha_ctx);
+    mbedtls_sha256_starts_ret(&sha_ctx, 0);
+    mbedtls_sha256_update_ret(&sha_ctx, data, data_len);
+    mbedtls_sha256_finish_ret(&sha_ctx, hash);
+    mbedtls_sha256_free(&sha_ctx);
+
+    // 2) Parse the public key
+    mbedtls_pk_init(&pk);
+    ret = mbedtls_pk_parse_public_key(&pk,
+                                      (const unsigned char*)firmware_pub_pem,
+                                      strlen(firmware_pub_pem) + 1);
+    if (ret != 0) {
+        // Optional: call mbedtls_strerror(ret, buf, len) to log the error
+        mbedtls_pk_free(&pk);
+        return false;
+    }
+
+    // 3) Verify the signature (DER-encoded) over the hash
+    ret = mbedtls_pk_verify(&pk,
+                            MBEDTLS_MD_SHA256,
+                            hash, sizeof(hash),
+                            sig, sig_len);
+
+    mbedtls_pk_free(&pk);
+    return (ret == 0);
 }

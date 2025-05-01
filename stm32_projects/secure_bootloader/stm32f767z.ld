@@ -4,7 +4,7 @@
 MEMORY
 {
     /* Bootloader region (32KB) */
-    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 32K
+    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 512K
     
     /* Application region (512KB) */
     APP_FLASH (rx)       : ORIGIN = 0x08040000, LENGTH = 512K
@@ -69,6 +69,7 @@ SECTIONS
         *(COMMON)
         . = ALIGN(4);
         _ebss = .;         /* End of BSS section */
+        _end  = .;         /* C library expects this symbol */
     } >RAM
 
     /* Stack section */

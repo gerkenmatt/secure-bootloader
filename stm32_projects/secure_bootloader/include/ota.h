@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "bootloader.h"
+#include "mbedtls/sha256.h"
+#include "mbedtls/pk.h"
+#include "mbedtls/error.h"
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -14,6 +17,7 @@
 #define PACKET_HEADER     0x02
 #define PACKET_DATA       0x03
 #define PACKET_RESP       0x04
+#define PACKET_SIG        0x05
 
 /// OTA command types
 #define CMD_START         0xA0
@@ -38,6 +42,8 @@
 
 /// Size of sector 5 (128KB)
 #define SECTOR5_SIZE      (128 * 1024)
+
+#define SIG_MAX_LEN       512
 
 // -----------------------------------------------------------------------------
 // Data Structures
@@ -123,5 +129,26 @@ void handle_ota_data(const ota_frame_t* frame);
  * @param status Response status code (RESP_ACK or RESP_NACK)
  */
 void ota_send_response(uint8_t status);
+
+/**
+ * @brief Handles incoming OTA signature packet containing firmware signature.
+ * 
+ * Validates signature length and copies signature to global ota_signature struct.
+ *
+ * @param frame Pointer to received OTA frame
+ */
+void handle_ota_signature(const ota_frame_t* frame);
+
+/**
+ * @brief Verifies the signature of a firmware image.
+ * 
+ * @param data Pointer to the firmware image data
+ * @param data_len Length of the firmware image data
+ * @param sig Pointer to the signature data
+ * @param sig_len Length of the signature data
+ * @return true if signature is valid, false otherwise
+ */
+bool verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t  *sig, uint16_t sig_len);
+
 
 #endif // OTA_H

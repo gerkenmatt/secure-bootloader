@@ -80,6 +80,13 @@ void loop() {
       buffer = "";
     }
   }
+  // Non-blocking LED blink every 500ms
+  unsigned long now = millis();
+  if (now - lastBlink >= 500) {
+    lastBlink = now;
+    ledState = !ledState;
+    digitalWrite(LED_PIN, ledState);
+  }
 
   delay(1); // yield to BLE stack
 }

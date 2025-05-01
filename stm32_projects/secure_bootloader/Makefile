@@ -15,10 +15,12 @@ INCLUDE_DIRS := \
   -I$(HOME)/STM32CubeF7/Drivers/STM32F7xx_HAL_Driver/Inc \
   -I$(HOME)/STM32CubeF7/Drivers/CMSIS/Device/ST/STM32F7xx/Include \
   -I$(HOME)/STM32CubeF7/Drivers/CMSIS/Include
+MBEDTLS_DIR := lib/mbedtls
 
-# Source Files
+# Source Files        
 SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS))
+
 
 # Output Files
 TARGET := $(BUILD_DIR)/$(PROJECT).elf
@@ -26,8 +28,10 @@ HEX    := $(BUILD_DIR)/$(PROJECT).hex
 BIN    := $(BUILD_DIR)/$(PROJECT).bin
 
 # Flags
-CFLAGS  := -mcpu=cortex-m7 -mthumb -O0 -g -ggdb -Wall -DSTM32F767xx $(INCLUDE_DIRS)
+CFLAGS  := -mcpu=cortex-m7 -mthumb -Os -g -ggdb -Wall -DSTM32F767xx $(INCLUDE_DIRS)
+CFLAGS  += -I$(MBEDTLS_DIR)/include
 LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections
+LDFLAGS += lib/mbedtls/build/library/libmbedcrypto.a
 
 # Default target
 all: $(TARGET)
