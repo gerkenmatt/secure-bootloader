@@ -8,6 +8,8 @@
 #include "flash.h"
 #include "bootloader.h"
 
+#define CHUNK_SIZE 256
+
 // OTA session state
 static ota_header_info_t ota_header;
 static uint32_t flash_write_addr = SLOT1_ADDR;
@@ -15,6 +17,10 @@ static uint32_t flash_write_addr = SLOT1_ADDR;
 // storage for the incoming signature:
 static uint8_t  ota_signature[SIG_MAX_LEN];
 static uint16_t ota_sig_len;
+
+static mbedtls_pk_context pk;  // Avoid large stack allocation
+static uint8_t temp[64] = {0};
+__attribute__((aligned(4))) static uint8_t aligned_buf[64];
 
 static const char firmware_pub_pem[] =
 "-----BEGIN PUBLIC KEY-----\n"
@@ -153,7 +159,9 @@ void handle_ota_command(const ota_frame_t* frame) {
             break;
 
         case CMD_END:
-            log("Received OTA END\r\n");
+            // log("Received OTA END\r\n");
+
+            log("Verifying signature...\r\n");
 
             // verify the signature on the new image in flash
             if (!verify_signature(
@@ -162,10 +170,14 @@ void handle_ota_command(const ota_frame_t* frame) {
                     ota_signature,
                     ota_sig_len))
             {
-                log("Signature verification failed\r\n");
                 ota_send_response(RESP_NACK);
+                log("Signature verification failed\r\n");
                 return;
             }
+
+
+            log("Signature verified\r\n");
+
             bootloader_config_t cfg = *read_boot_config();  // Read current config
 
             // Update slot 1 metadata
@@ -181,11 +193,17 @@ void handle_ota_command(const ota_frame_t* frame) {
             cfg.magic = BOOT_CONFIG_MAGIC;
             cfg.reboot_cause = 1;  // e.g., OTA_REQUEST (if defined)
 
+            log("Writing boot config...\r\n");
+
             if (!write_boot_config(&cfg)) {
-                log("Failed to write boot config\r\n");
                 ota_send_response(RESP_NACK);
+                log("Failed to write boot config\r\n");
                 return;
             }
+
+            log("Boot config written\r\n");
+
+            ota_send_response(RESP_ACK);
 
             // OTA update complete, lock flash and reboot
             FLASH->CR |= FLASH_CR_LOCK;
@@ -280,21 +298,44 @@ bool verify_signature(const uint8_t *data,
                       const uint8_t  *sig,
                       uint16_t        sig_len)
 {
-    return true;
     int ret;
     uint8_t hash[32];
-    mbedtls_pk_context pk;
+    // mbedtls_pk_context pk;
+
+    SCB_DisableICache();
+    SCB_DisableDCache();
+
 
     // 1) Hash the firmware image with SHA-256
+    log("Hashing firmware image...\r\n");
     mbedtls_sha256_context sha_ctx;
     mbedtls_sha256_init(&sha_ctx);
+    log("test1\r\n");
     mbedtls_sha256_starts_ret(&sha_ctx, 0);
-    mbedtls_sha256_update_ret(&sha_ctx, data, data_len);
+    log("test2\r\n");
+    log("data: "); print_uint32_hex(data); log("\r\n");
+    log("data_len: "); print_uint32_hex(data_len); log("\r\n");
+
+
+    register uint32_t sp asm("sp");
+    log("sp: "); print_uint32_hex(sp); log("\r\n");
+
+    memcpy(aligned_buf, data, 64);
+    mbedtls_sha256_update_ret(&sha_ctx, aligned_buf, 64);
+    log("sanity check passed\r\n");
+
+    mbedtls_sha256_update_ret(&sha_ctx, data, 64);// data_len);
+    log("test3\r\n");
     mbedtls_sha256_finish_ret(&sha_ctx, hash);
+    log("test4\r\n");
     mbedtls_sha256_free(&sha_ctx);
 
-    // 2) Parse the public key
+    // return true;
+
+    //2) Parse the public key
+    log("Parsing public key...\r\n");
     mbedtls_pk_init(&pk);
+
     ret = mbedtls_pk_parse_public_key(&pk,
                                       (const unsigned char*)firmware_pub_pem,
                                       strlen(firmware_pub_pem) + 1);
@@ -304,7 +345,9 @@ bool verify_signature(const uint8_t *data,
         return false;
     }
 
+
     // 3) Verify the signature (DER-encoded) over the hash
+    log("Verifying signature...\r\n");
     ret = mbedtls_pk_verify(&pk,
                             MBEDTLS_MD_SHA256,
                             hash, sizeof(hash),

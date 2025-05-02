@@ -4,7 +4,7 @@
 MEMORY
 {
     /* Bootloader region (32KB) */
-    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 512K
+    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 128K
     
     /* Application region (512KB) */
     APP_FLASH (rx)       : ORIGIN = 0x08040000, LENGTH = 512K
@@ -83,11 +83,11 @@ SECTIONS
     } >RAM
 
     /* Remove unused sections */
-    /DISCARD/ :
+    /*/DISCARD/ :
     {
         libc.a ( * )
         libm.a ( * )
         libgcc.a ( * )
-    }
+    }*/
 }
 

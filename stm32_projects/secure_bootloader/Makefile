@@ -30,6 +30,7 @@ BIN    := $(BUILD_DIR)/$(PROJECT).bin
 # Flags
 CFLAGS  := -mcpu=cortex-m7 -mthumb -Os -g -ggdb -Wall -DSTM32F767xx $(INCLUDE_DIRS)
 CFLAGS  += -I$(MBEDTLS_DIR)/include
+CFLAGS  += -ffunction-sections -fdata-sections
 LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections
 LDFLAGS += lib/mbedtls/build/library/libmbedcrypto.a
 

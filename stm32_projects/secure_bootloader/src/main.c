@@ -88,6 +88,7 @@ static void system_init(void)
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOCEN;
     usart_puts("GPIO clocks enabled\r\n");
 
+
     // Set PA5 to output (was used for LED blinking, optional now)
     GPIOA->MODER = (GPIOA->MODER & ~GPIO_MODER_MODER5) | GPIO_MODER_MODER5_0;
 
@@ -105,4 +106,8 @@ static void system_init(void)
     GPIOB->ODR &= ~(1UL << 7); //clear_blue
     GPIOB->ODR &= ~(1UL << 14); //clear_red
     usart_puts("GPIO configured\r\n");
+
+    // Enable all fault handlers
+    SCB->SHCSR |= SCB_SHCSR_USGFAULTENA_Msk | SCB_SHCSR_BUSFAULTENA_Msk | SCB_SHCSR_MEMFAULTENA_Msk;
+
 }
