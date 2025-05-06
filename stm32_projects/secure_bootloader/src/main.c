@@ -28,6 +28,24 @@ int main(void)
     bootloader_init();           // Prepare internal state, verify memory aliasing
     validate_boot_environment(); // Confirm VTOR and aliasing are valid
 
+    // usart_puts("Starting calloc test...\r\n");
+    // void *p = calloc(172, 1);
+    // // void *p = malloc(16);
+    // if (p) {
+    //     memset(p, 0, 172);
+    //     uint8_t *b = (uint8_t *)p;
+    //     for (int i = 0; i < 172; i++) {
+    //         print_uint32_hex(b[i]);
+    //         usart_puts(" ");
+    //     }
+    //     usart_puts("\r\n");
+    //     usart_puts("manual calloc OK\r\n");
+    // }
+    // // if( p )
+    // //     usart_puts("calloc OK\r\n");
+    // else
+    //     usart_puts("calloc FAILED\r\n");
+    // free(p);
 
 
     // Bootloader main loop: handle command mode or jump to app

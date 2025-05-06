@@ -72,6 +72,10 @@ SECTIONS
         _end  = .;         /* C library expects this symbol */
     } >RAM
 
+    /* Heap section (grows upward) */
+    _heap_start = _end;
+    _heap_end = ORIGIN(RAM) + LENGTH(RAM) - 0x1000;  /* Leave room for 4KB stack */
+
     /* Stack section */
     ._user_stack :
     {

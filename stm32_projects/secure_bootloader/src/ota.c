@@ -7,6 +7,7 @@
 #include "utilities.h"
 #include "flash.h"
 #include "bootloader.h"
+#include "mbedtls/platform.h"
 
 #define CHUNK_SIZE 256
 
@@ -304,6 +305,7 @@ bool verify_signature(const uint8_t *data,
 
     SCB_DisableICache();
     SCB_DisableDCache();
+    mbedtls_platform_set_calloc_free(calloc, free);
 
 
     // 1) Hash the firmware image with SHA-256

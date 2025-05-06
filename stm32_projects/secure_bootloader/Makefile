@@ -33,6 +33,7 @@ CFLAGS  += -I$(MBEDTLS_DIR)/include
 CFLAGS  += -ffunction-sections -fdata-sections
 LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections
 LDFLAGS += lib/mbedtls/build/library/libmbedcrypto.a
+LDFLAGS += -Wl,-Map=$(BUILD_DIR)/secure_bootloader.map
 
 # Default target
 all: $(TARGET)
