@@ -71,4 +71,6 @@ void print_uint64_hex(uint64_t val);
  */
 void print_uint8_hex(uint8_t val);
 
+void print_uint16_hex(uint16_t val);     
+
 #endif // UART_H
