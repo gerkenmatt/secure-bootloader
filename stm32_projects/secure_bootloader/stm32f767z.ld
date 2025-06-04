@@ -74,16 +74,25 @@ SECTIONS
 
     /* Heap section (grows upward) */
     _heap_start = _end;
-    _heap_end = ORIGIN(RAM) + LENGTH(RAM) - 0x1000;  /* Leave room for 4KB stack */
+    _stack_size = 0x4000; /* Define stack size */
+    _heap_end = ORIGIN(RAM) + LENGTH(RAM) - _stack_size; 
 
-    /* Stack section */
-    ._user_stack :
+    /* Define stack symbols based on top of RAM */
+    __StackLimit = _heap_end; /* Lowest stack address */
+    __StackTop = ORIGIN(RAM) + LENGTH(RAM); /* Initial SP */
+
+    _sstack = __StackLimit;
+    _estack = __StackTop; /* This should be used for initial SP */
+
+    . = _heap_end; /* Move current location counter to start of stack area */
+
+    ._user_stack (NOLOAD) : /* NOLOAD if it's just for SP and bounds, not initialized data */
     {
         . = ALIGN(8);
-        _sstack = .;
-        . = . + 0x1000;    /* 4KB of stack */
+        PROVIDE(_sstack = .);
+        . = . + _stack_size;
         . = ALIGN(8);
-        _estack = .;
+        PROVIDE(_estack = .); /* This _estack would be 0x20080000 */
     } >RAM
 
     /* Remove unused sections */

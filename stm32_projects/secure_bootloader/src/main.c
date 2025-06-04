@@ -4,6 +4,7 @@
 #include "ota.h"
 #include "stm32f7xx.h"
 #include "uart.h"
+#include "mbedtls/platform.h"
 
 // -----------------------------------------------------------------------------
 // Function Prototypes 
@@ -28,6 +29,7 @@ int main(void)
     bootloader_init();           // Prepare internal state, verify memory aliasing
     validate_boot_environment(); // Confirm VTOR and aliasing are valid
 
+    mbedtls_platform_set_calloc_free(calloc, free); //TODO: move to init function 
 
     // Bootloader main loop: handle command mode or jump to app
     while (1)

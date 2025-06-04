@@ -1,11 +1,10 @@
-
 # Project name
 PROJECT = secure_bootloader
 
 # Toolchain
-CC      := arm-none-eabi-gcc
-OBJCOPY := arm-none-eabi-objcopy
-GDB     := arm-none-eabi-gdb
+CC       := arm-none-eabi-gcc
+OBJCOPY  := arm-none-eabi-objcopy
+GDB      := arm-none-eabi-gdb
 
 # Directories
 BUILD_DIR  := build
@@ -28,19 +27,25 @@ HEX    := $(BUILD_DIR)/$(PROJECT).hex
 BIN    := $(BUILD_DIR)/$(PROJECT).bin
 
 # Flags
-CFLAGS  := -mcpu=cortex-m7 -mthumb -Os -g -ggdb -Wall -DSTM32F767xx $(INCLUDE_DIRS)
-CFLAGS  += -I$(MBEDTLS_DIR)/include
-CFLAGS  += -ffunction-sections -fdata-sections
-LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections
-LDFLAGS += lib/mbedtls/build/library/libmbedcrypto.a
-LDFLAGS += -Wl,-Map=$(BUILD_DIR)/secure_bootloader.map
+CFLAGS   := -mcpu=cortex-m7 -mthumb -O0 -g -ggdb -Wall -DSTM32F767xx $(INCLUDE_DIRS)
+CFLAGS   += -I$(MBEDTLS_DIR)/include
+CFLAGS   += -ffunction-sections -fdata-sections
+
+# Linker Flags
+LDFLAGS  := -T stm32f767z.ld -Wl,--gc-sections
+LDFLAGS  += -Wl,-Map=$(BUILD_DIR)/secure_bootloader.map
+LDFLAGS  += -specs=nosys.specs  # <--- CRITICAL ADDITION HERE
+# Link mbed TLS library (and other libraries if any)
+LDLIBS   := lib/mbedtls/build/library/libmbedcrypto.a
+# If you had other libraries, you could add them like:
+# LDLIBS += -lm -lc # etc., though nosys.specs might affect how -lc behaves.
 
 # Default target
 all: $(TARGET)
 
 # Linking
 $(TARGET): $(OBJS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@
+	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@ # Pass CFLAGS for MCU flags, then OBJS, LDFLAGS, then LDLIBS
 	$(OBJCOPY) -O ihex $@ $(HEX)
 	$(OBJCOPY) -O binary $@ $(BIN)
 

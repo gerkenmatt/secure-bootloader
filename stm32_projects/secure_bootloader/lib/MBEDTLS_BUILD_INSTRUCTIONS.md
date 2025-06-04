@@ -27,13 +27,6 @@ This guide outlines how to build the mbed TLS library as a static library using 
 3.  **Configure the Build with CMake:**
     Run CMake from the `build` directory to generate the build files. You'll need to specify your ARM toolchain.
         ```bash
-        cmake \
-          -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-          -DCMAKE_TOOLCHAIN_FILE=../../../cmake/arm-none-eabi.cmake \
-          -DCMAKE_BUILD_TYPE=MinSizeRel \
-          -DENABLE_TESTING=OFF \
-          ../
-
         cmake -DCMAKE_TOOLCHAIN_FILE=../../../cmake/arm-none-eabi.cmake  \
           -DENABLE_TESTING=OFF \
           -DENABLE_PROGRAMS=OFF \
@@ -60,33 +53,3 @@ This guide outlines how to build the mbed TLS library as a static library using 
     * `build/library/libmbedtls.a` (For TLS/SSL features, should be very small if SSL/TLS features are disabled).
 
     Given your configuration for ECDSA verification, `libmbedcrypto.a` will contain the bulk of the necessary code.
-
-## Using the Static Library in Your STM32 Project
-
-After successfully building the mbed TLS static library (primarily `libmbedcrypto.a`):
-
-1.  **Copy the Library:**
-    Copy the generated `.a` file(s) (e.g., `libmbedcrypto.a`) into a dedicated directory within your STM32 project structure, for example, `Your_STM32_Project/lib/`.
-
-2.  **Add Include Path:**
-    In your STM32 project's build settings (e.g., STM32CubeIDE project properties, Makefile `CFLAGS`), add the path to the mbed TLS `include` directory (from the original mbed TLS source code root).
-    For example, if you copied mbed TLS `include` to `Your_STM32_Project/mbedtls_include/`, you would add that path.
-
-3.  **Configure Linker:**
-    In your STM32 project's linker settings:
-    * Add the path to the directory where you placed the static library (e.g., `-L../lib` or `Your_STM32_Project/lib`).
-    * Specify the library to link against (e.g., `-lmbedcrypto`). The `-l` prefix followed by the library name (without `lib` and `.a`) is standard.
-
-4.  **Use mbed TLS APIs:**
-    You can now include mbed TLS headers in your STM32 application code and call its functions:
-    ```c
-    #include "mbedtls/ecdsa.h"
-    #include "mbedtls/sha256.h"
-    // ... other necessary headers
-
-    void verify_firmware_signature() {
-        // Your code using mbedtls_ecdsa_context, mbedtls_pk_context, etc.
-    }
-    ```
-
-Recompile your STM32 project. The linker should now find and link the mbed TLS library you built.

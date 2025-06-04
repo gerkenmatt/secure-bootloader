@@ -103,3 +103,13 @@ void print_uint64_hex(uint64_t val) {
     hex[16] = '\0';
     usart_puts(hex);
 }
+
+void print_uint16_hex(uint16_t val) {
+    char hex[5];
+    for (int i = 3; i >= 0; i--) {
+        int nibble = (val >> (i * 4)) & 0xF;
+        hex[3 - i] = (nibble < 10) ? ('0' + nibble) : ('A' + nibble - 10);
+    }
+    hex[4] = '\0';
+    usart_puts(hex);
+}

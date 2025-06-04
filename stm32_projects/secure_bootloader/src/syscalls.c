@@ -64,23 +64,6 @@ void *calloc(size_t nmemb, size_t size)
     }
 
     heap_ptr = next;
-    extern char _end, _heap_end, _estack;
-    register char *sp asm("sp");  // Read current stack pointer
-    
-    usart_puts("calloc(");
-    print_uint32_hex((uint32_t)nmemb);
-    usart_puts(", ");
-    print_uint32_hex((uint32_t)size);
-    usart_puts(") = ");
-    print_uint32_hex((uint32_t)(uintptr_t)prev);
-    usart_puts(" | heap_ptr: ");
-    print_uint32_hex((uint32_t)(uintptr_t)heap_ptr);
-    usart_puts(" | _heap_end: ");
-    print_uint32_hex((uint32_t)&_heap_end);
-    usart_puts(" | SP: ");
-    print_uint32_hex((uint32_t)sp);
-    usart_puts("\r\n");
-
     return prev;
 }
 
