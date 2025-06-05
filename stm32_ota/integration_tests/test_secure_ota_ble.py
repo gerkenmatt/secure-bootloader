@@ -110,7 +110,7 @@ async def ota_host_fixture(request): # 'request' is a built-in pytest fixture
         print(YELLOW + "Fixture: Connected. Performing initial reboot to ensure known state..." + RESET)
     # Ensure device is in a known ready state before tests run
     # reboot_and_wait_for_ready respects host.verbose for its internal logging
-    if not await reboot_and_wait_for_ready(host, reboot_cmd_delay=2.0, ready_timeout=20):
+    if not await reboot_and_wait_for_ready(host, reboot_cmd_delay=4.0, ready_timeout=20):
         pytest.fail(RED + "Fixture: Device failed to become ready after initial controlled reboot." + RESET)
     if host.verbose:
         print(GREEN + "Fixture: Device is initially rebooted and ready." + RESET)

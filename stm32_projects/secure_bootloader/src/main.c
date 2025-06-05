@@ -4,7 +4,6 @@
 #include "ota.h"
 #include "stm32f7xx.h"
 #include "uart.h"
-#include "mbedtls/platform.h"
 
 // -----------------------------------------------------------------------------
 // Function Prototypes 
@@ -28,8 +27,6 @@ int main(void)
 
     bootloader_init();           // Prepare internal state, verify memory aliasing
     validate_boot_environment(); // Confirm VTOR and aliasing are valid
-
-    mbedtls_platform_set_calloc_free(calloc, free); //TODO: move to init function 
 
     // Bootloader main loop: handle command mode or jump to app
     while (1)
@@ -69,26 +66,19 @@ static void log_state_transition(bootloader_state_t new_state) {
  */
 static void system_init(void)
 {
-    //TODO: get rid of these prints since uart is not set up yet
-    usart_puts("Initializing system...\r\n");
 
     // Enable FPU (floating point unit)
     SCB->CPACR |= ((3UL << 20) | (3UL << 22));
-    usart_puts("FPU enabled\r\n");
 
     // Enable instruction and data caches
     SCB_EnableICache();
     SCB_EnableDCache();
-    usart_puts("Caches enabled\r\n");
 
     // Configure flash latency for high-speed operation (216 MHz)
     FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) | FLASH_ACR_LATENCY_7WS;
-    usart_puts("Flash latency configured\r\n");
 
     // Enable GPIOA and GPIOC peripheral clocks
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOCEN;
-    usart_puts("GPIO clocks enabled\r\n");
-
 
     // Set PA5 to output (was used for LED blinking, optional now)
     GPIOA->MODER = (GPIOA->MODER & ~GPIO_MODER_MODER5) | GPIO_MODER_MODER5_0;
@@ -106,7 +96,6 @@ static void system_init(void)
     GPIOB->ODR &= ~(1UL << 0); //clear_green
     GPIOB->ODR &= ~(1UL << 7); //clear_blue
     GPIOB->ODR &= ~(1UL << 14); //clear_red
-    usart_puts("GPIO configured\r\n");
 
     // Enable all fault handlers
     SCB->SHCSR |= SCB_SHCSR_USGFAULTENA_Msk | SCB_SHCSR_BUSFAULTENA_Msk | SCB_SHCSR_MEMFAULTENA_Msk;

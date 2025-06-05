@@ -7,6 +7,7 @@
 #include "uart.h"
 #include "utilities.h"
 #include "flash.h"
+#include "mbedtls/platform.h"
 
 // -----------------------------------------------------------------------------
 // Static State and Configuration
@@ -33,6 +34,8 @@ void bootloader_init(void)
         init_bootloader_config();
     }
 
+    mbedtls_platform_set_calloc_free(calloc, free);
+
     // Set state to READY
     current_state = BL_STATE_READY;
 }
@@ -54,7 +57,7 @@ void init_bootloader_config(void) {
 
     // Make slot 0 the default active slot
     cfg.slot[0].is_active = 1;
-    cfg.slot[0].is_valid = 1;
+    cfg.slot[0].is_valid = 1; //TODO: update, this implies there is always a valid app in slot 0
 
     write_boot_config(&cfg);
 }
@@ -65,7 +68,7 @@ void process_bootloader_command(void)
         return;
 
     char cmd_buf[16] = {0};
-    usart_gets(cmd_buf, sizeof(cmd_buf));
+    usart_gets(cmd_buf, sizeof(cmd_buf));       //TODO: prevent buffer overflows
 
     if (strcmp(cmd_buf, "run") == 0 || strcmp(cmd_buf, "r") == 0)
     {
@@ -212,7 +215,8 @@ void validate_boot_environment(void)
     usart_puts("\tMemory aliasing verified\r\n");
 }
 
-bool write_boot_config(const bootloader_config_t* new_config) {
+bool write_boot_config(const bootloader_config_t* new_config) 
+{
     if (!new_config) return false;
 
     unlock_flash();
