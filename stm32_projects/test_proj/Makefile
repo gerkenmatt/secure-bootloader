@@ -26,8 +26,11 @@ endif
 
 
 # Compilation flags
-CFLAGS  := -mcpu=cortex-m7 -mthumb -O0 -g -ggdb -Wall -DSTM32F767xx -DFLASH_ADDR=$(FLASH_ADDR) $(INCLUDE_DIRS)
-LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections -Wl,--defsym=__FLASH_ORIGIN=$(FLASH_ADDR) -Wl,--defsym=__FLASH_LENGTH=$(FLASH_LEN)
+CFLAGS  := -mcpu=cortex-m7 -mthumb -O1 -g -ggdb -Wall -DSTM32F767xx -DFLASH_ADDR=$(FLASH_ADDR) $(INCLUDE_DIRS)
+LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections \
+           -Wl,--defsym=__FLASH_ORIGIN=$(FLASH_ADDR) \
+           -Wl,--defsym=__FLASH_LENGTH=$(FLASH_LEN) \
+           -Wl,-Map=$(BUILD_DIR)/blinky.map  
 
 
 # Source and Object Files

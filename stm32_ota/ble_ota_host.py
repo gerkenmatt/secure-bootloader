@@ -56,6 +56,8 @@ def handle_notification(_, data: bytearray):
             print(BLUE + "  --> ACK received" + RESET)
         elif status == RESP_NACK:
             print(RED + "  --> NACK received" + RESET)
+        else: 
+            print(RED + "  --> Bad ACK data: " + data + RESET)
         ack_event.set()
     else:
         try:
@@ -64,7 +66,7 @@ def handle_notification(_, data: bytearray):
         except:
             print("    " + GREEN + data.hex() + RESET)
 
-async def wait_for_ack(timeout=2.0):
+async def wait_for_ack(timeout=4.0):
     try:
         await asyncio.wait_for(ack_event.wait(), timeout)
         ack_event.clear()
@@ -76,7 +78,7 @@ async def wait_for_ack(timeout=2.0):
 async def send_cmd(client, cmd_id, wait=True):
     frame = build_frame(PACKET_CMD, bytes([cmd_id]))
     await client.write_gatt_char(CHAR_RX_UUID, frame)
-    return await wait_for_ack() if wait else True
+    return await wait_for_ack() #if wait else True
 
 async def send_header(client, fw_size, fw_crc32):
     payload = struct.pack('<III', fw_size, fw_crc32, 0) + b'\x00' * 4
@@ -120,7 +122,7 @@ async def send_ota_sequence(client, fw_path, sig_path):
     print(f"CRC32: 0x{fw_crc32:08X}")
 
     print("Sending OTA_START")
-    if not await send_cmd(client, CMD_START):
+    if not await send_cmd(client, CMD_START, wait=True):
         return
 
     print("Sending header")

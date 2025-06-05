@@ -38,7 +38,7 @@ static const unsigned char pubkey_der[] = {
 };
 
 
-void handle_ota_session(void) {
+bool handle_ota_session(void) {
     log("Waiting for OTA packets...\r\n");
 
     while (1) {
@@ -49,7 +49,10 @@ void handle_ota_session(void) {
             // Process frame based on its type
             switch (frame.type) {
                 case PACKET_CMD:    
-                    handle_ota_command(&frame); // Handle control commands
+                    if (!handle_ota_command(&frame)) {
+                        // Exit OTA session if handler returns false
+                        return false;
+                    }
                     break;
                 case PACKET_HEADER: 
                     handle_ota_header(&frame);  // Process firmware metadata
@@ -73,6 +76,7 @@ void handle_ota_session(void) {
             log("Invalid frame\r\n");
         }
     }
+    return true;
 }
 
 bool ota_receive_frame(ota_frame_t* frame) {
@@ -123,20 +127,17 @@ bool ota_receive_frame(ota_frame_t* frame) {
     uint32_t calc_crc = crc32(frame->data, frame->length);
     if (calc_crc != frame->crc) {
         ota_send_response(RESP_NACK);
-        log("CRC mismatch: calc=0x");
-        print_uint32_hex(calc_crc);
-        log(" frame=0x"); 
-        print_uint32_hex(frame->crc);
-        log("\r\n");
+        log("CRC mismatch: calc=0x"); print_uint32_hex(calc_crc);
+        log(" frame=0x"); print_uint32_hex(frame->crc); log("\r\n");
         return false;
     }
 
     return true;
 }
 
-void handle_ota_command(const ota_frame_t* frame) {
+bool handle_ota_command(const ota_frame_t* frame) {
     // Validate frame has at least 1 byte for command
-    if (frame->length < 1) return;
+    if (frame->length < 1) return true;
 
     switch (frame->data[0]) {
         case CMD_START:
@@ -160,7 +161,7 @@ void handle_ota_command(const ota_frame_t* frame) {
             if (!erase_flash_sectors(SLOT1_SECTOR, SLOT1_SECTOR, flash_write_addr, ota_header.fw_size)) {
                 ota_send_response(RESP_NACK);
                 log("Flash erase failed\r\n");
-                return;
+                return true;
             }
 
             // Erase successful, send ACK
@@ -169,20 +170,18 @@ void handle_ota_command(const ota_frame_t* frame) {
             break;
 
         case CMD_END:
-            // log("Received OTA END\r\n");
-
             log("Verifying signature...\r\n");
-
-            // verify the signature on the new image in flash
             if (!verify_signature(
                     (uint8_t*)SLOT1_ADDR,
                     ota_header.fw_size,
                     ota_signature,
                     ota_sig_len))
             {
-                ota_send_response(RESP_NACK);
+                // ota_send_response(RESP_NACK);
                 log("Signature verification failed\r\n");
-                return;
+                // Exit OTA session and return to bootloader mode
+                ota_send_response(RESP_NACK);
+                return false;
             }
 
 
@@ -208,7 +207,7 @@ void handle_ota_command(const ota_frame_t* frame) {
             if (!write_boot_config(&cfg)) {
                 ota_send_response(RESP_NACK);
                 log("Failed to write boot config\r\n");
-                return;
+                return true;
             }
 
             log("Boot config written\r\n");
@@ -217,8 +216,7 @@ void handle_ota_command(const ota_frame_t* frame) {
 
             // OTA update complete, lock flash and reboot
             FLASH->CR |= FLASH_CR_LOCK;
-            log("Flash locked\r\n");
-            log("Rebooting...\r\n");
+            log("Flash locked\r\n"); log("Rebooting...\r\n");
             SCB_CleanDCache();        // Clean data cache
             NVIC_SystemReset();       // Reset system
             break;
@@ -229,6 +227,7 @@ void handle_ota_command(const ota_frame_t* frame) {
             log("Unknown CMD: "); print_uint32_hex(frame->data[0]); log("\r\n");
             break;
     }
+    return true;
 }
 
 
@@ -278,8 +277,7 @@ void handle_ota_data(const ota_frame_t* frame) {
             ota_send_response(RESP_NACK);
             log("Flash verify failed\r\n");
             log("Expected: "); print_uint32_hex(word);
-            log("\r\nReadback: "); print_uint32_hex(verify);
-            log("\r\n");
+            log("\r\nReadback: "); print_uint32_hex(verify); log("\r\n");
             return;
         }
 

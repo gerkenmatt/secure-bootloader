@@ -77,8 +77,9 @@ typedef struct {
  * - PACKET_CMD: Control commands like start/end update
  * - PACKET_HEADER: Contains firmware metadata
  * - PACKET_DATA: Contains firmware binary data
+ * @return true if OTA session completed successfully, false if interrupted
  */
-void handle_ota_session(void);
+bool handle_ota_session(void);
 
 /**
  * @brief Receives and validates an OTA frame from UART.
@@ -99,8 +100,9 @@ bool ota_receive_frame(ota_frame_t* frame);
  * - CMD_END: Completes update, locks flash and reboots system
  *
  * @param frame Pointer to received OTA frame containing command
+ * @return true if command handled successfully, false if session should end
  */
-void handle_ota_command(const ota_frame_t* frame);
+bool handle_ota_command(const ota_frame_t* frame);
 
 /**
  * @brief Handles incoming OTA header packet containing firmware metadata.

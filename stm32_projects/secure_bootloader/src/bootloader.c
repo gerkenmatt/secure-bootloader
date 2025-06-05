@@ -100,6 +100,12 @@ void process_bootloader_command(void)
         }
         usart_puts("\r\n");
     }
+    else if (strcmp(cmd_buf, "reboot") == 0 || strcmp(cmd_buf, "R") == 0)
+    {
+        usart_puts("Rebooting...\r\n");
+        SCB_CleanDCache();
+        NVIC_SystemReset();
+    }
     else
     {
         usart_puts("Unknown command.\r\n");
