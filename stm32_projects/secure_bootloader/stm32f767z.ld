@@ -5,9 +5,9 @@
  */
 MEMORY
 {
-    /* Bootloader Reserved Region (256KB total) */
+    /* Bootloader Reserved Region (128KB total) */
     /* Physical Flash is aliased at 0x00200000 for faster instruction fetch via ITCM */
-    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 256K
+    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 128K  /* Sector 0, 1, 2, and 3 */
     
     /* Active Application Region (512KB) */
     APP_ACTIVE (rx)       : ORIGIN = 0x08040000, LENGTH = 512K  /* Sector 5 & 6 */
