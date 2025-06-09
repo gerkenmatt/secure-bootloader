@@ -51,18 +51,18 @@
 
 /// Structure representing a received OTA frame
 typedef struct {
-    uint8_t  type;                        ///< Packet type
-    uint16_t length;                     ///< Length of data field
-    uint8_t  data[OTA_MAX_DATA];         ///< Payload data
-    uint32_t crc;                        ///< CRC32 of payload
+    uint8_t  type;                       // Packet type
+    uint16_t length;                     // Length of data field
+    uint8_t  data[OTA_MAX_DATA];         // Payload data
+    uint32_t crc;                        // CRC32 of payload
 } ota_frame_t;
 
 /// Structure representing firmware metadata header
 typedef struct {
-    uint32_t fw_size;                    ///< Firmware size in bytes
-    uint32_t fw_crc;                     ///< CRC32 checksum of firmware
-    uint32_t version;                    ///< Firmware version number
-    uint32_t reserved;                   ///< Reserved for future use
+    uint32_t fw_size;                    // Firmware size in bytes
+    uint32_t fw_crc;                     // CRC32 checksum of firmware
+    uint32_t version;                    // Firmware version number
+    uint32_t reserved;                   // Reserved for future use
 } ota_header_info_t;
 
 // -----------------------------------------------------------------------------

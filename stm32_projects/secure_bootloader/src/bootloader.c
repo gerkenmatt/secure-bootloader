@@ -75,7 +75,7 @@ void process_bootloader_command(void)
         usart_puts("Checking for firmware update...\r\n");
         load_new_app();  // apply update from slot 1 if needed
         usart_puts("Run application...\r\n");
-        bootloader_jump_to_application(0x08040000);
+        bootloader_jump_to_application(APPLICATION_START_ADDR);
     }
     else if (strcmp(cmd_buf, "ota") == 0)
     {
@@ -91,11 +91,12 @@ void process_bootloader_command(void)
         usart_puts("  ota  - Start OTA update mode\r\n");
         usart_puts("  p    - Print first 10 words of application flash\r\n");
         usart_puts("  help - Show this message\r\n");
+        usart_puts("  reboot - Reboot the device\r\n");
     }
     else if (strcmp(cmd_buf, "p") == 0)
     {
-        volatile uint32_t* flash_addr = (volatile uint32_t*)0x08040000;
-        usart_puts("First 10 words at 0x08040000:\r\n");
+        volatile uint32_t* flash_addr = (volatile uint32_t*)APPLICATION_START_ADDR;
+        usart_puts("First 10 words at APPLICATION_START_ADDR:\r\n");
         for (int i = 0; i < 10; i++)  // Read 10 32-bit words
         {
             print_uint32_hex(flash_addr[i]);
@@ -103,7 +104,7 @@ void process_bootloader_command(void)
         }
         usart_puts("\r\n");
     }
-    else if (strcmp(cmd_buf, "reboot") == 0 || strcmp(cmd_buf, "R") == 0)
+    else if (strcmp(cmd_buf, "reboot") == 0)
     {
         usart_puts("Rebooting...\r\n");
         SCB_CleanDCache();
@@ -217,6 +218,7 @@ void validate_boot_environment(void)
 
 bool write_boot_config(const bootloader_config_t* new_config) 
 {
+    //TODO: atomicity concern, if power loss occurs during write, we may end up with a partially written config
     if (!new_config) return false;
 
     unlock_flash();

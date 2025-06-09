@@ -32,34 +32,34 @@ typedef enum {
 // Memory Map Definitions
 // -----------------------------------------------------------------------------
 
-#define FLASH_BASE_ADDR          0x08000000  ///< Main flash memory (AXI bus)
-#define ITCM_FLASH_ADDR          0x00200000  ///< Aliased flash memory (ITCM bus)
-#define SYSTEM_BOOTLOADER_ADDR   0x00100000  ///< System bootloader (ROM)
+#define FLASH_BASE_ADDR          0x08000000  // Main flash memory (AXI bus)
+#define ITCM_FLASH_ADDR          0x00200000  // Aliased flash memory (ITCM bus)
+#define SYSTEM_BOOTLOADER_ADDR   0x00100000  // System bootloader (ROM)
 
 #define RAM_START                0x20000000
-#define RAM_SIZE                 (512 * 1024)  ///< 512KB RAM
+#define RAM_SIZE                 (512 * 1024)  // 512KB RAM
 #define RAM_END                  (RAM_START + RAM_SIZE)
 
-#define FLASH_END_ADDR           0x08200000  ///< 2MB total flash size
+#define FLASH_END_ADDR           0x08200000  // 2MB total flash size
 #define CR_PSIZE_MASK            ((uint32_t)0xFFFFFCFFU)
 
 // -----------------------------------------------------------------------------
 // Flash Layout
 // -----------------------------------------------------------------------------
 
-#define BOOTLOADER_SIZE          (256 * 1024)   ///< 256KB
+#define BOOTLOADER_SIZE          (256 * 1024)   // 256KB
 #define BOOTLOADER_START_PHYS    FLASH_BASE_ADDR
 #define BOOTLOADER_START_ALIAS   ITCM_FLASH_ADDR
 #define APPLICATION_START_ADDR   0x08040000
 
-#define SLOT0_ADDR               0x08080000
-#define SLOT1_ADDR               0x080C0000
-#define SLOT_SIZE                0x80000        ///< 512KB
+#define SLOT0_ADDR               0x08080000     // Starts at Sector 6
+#define SLOT1_ADDR               0x08100000     // Starts at Sector 8
+#define SLOT_SIZE                0x80000        // 512KB
 
-#define CONFIG_SECTOR            4
-#define CONFIG_ADDR              0x08020000
+#define CONFIG_SECTOR            3
+#define CONFIG_ADDR              0x08018000     // 32 KB sector for bootloader config
 #define SLOT0_SECTOR             6
-#define SLOT1_SECTOR             7
+#define SLOT1_SECTOR             8
 
 // -----------------------------------------------------------------------------
 // Boot Configuration
@@ -71,17 +71,17 @@ typedef enum {
 
 /// Bootloader configuration structure (stored in last page of bootloader section)
 typedef struct {
-    uint32_t magic;         ///< Magic number to identify valid config
-    uint32_t reboot_cause;  ///< Reason for reset: NORMAL_BOOT, OTA_REQUEST, etc.
+    uint32_t magic;         // Magic number to identify valid config
+    uint32_t reboot_cause;  // Reason for reset: NORMAL_BOOT, OTA_REQUEST, etc.
 
     struct {
-        uint32_t fw_crc;      ///< CRC32 of the firmware in this slot
-        uint32_t fw_size;     ///< Size in bytes of the firmware
-        uint8_t  is_valid;    ///< 1 = CRC passed, 0 = invalid or empty
-        uint8_t  is_active;   ///< 1 = this slot is currently active
-        uint8_t  should_run;  ///< 1 = try this firmware on next boot
-        uint8_t  reserved;    ///< Padding for alignment
-    } slot[2];               ///< slot[0] = primary, slot[1] = backup/new
+        uint32_t fw_crc;      // CRC32 of the firmware in this slot
+        uint32_t fw_size;     // Size in bytes of the firmware
+        uint8_t  is_valid;    // 1 = CRC passed, 0 = invalid or empty
+        uint8_t  is_active;   // 1 = this slot is currently active
+        uint8_t  should_run;  // 1 = try this firmware on next boot
+        uint8_t  reserved;    // Padding for alignment
+    } slot[2];               // slot[0] = primary, slot[1] = backup/new
 } bootloader_config_t;
 
 // -----------------------------------------------------------------------------

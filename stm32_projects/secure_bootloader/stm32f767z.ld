@@ -1,18 +1,25 @@
 /* Linker script for STM32F767ZIT */
 
-/* Memory regions for STM32F767ZI */
+/* Memory regions for STM32F767ZI
+ * These values should be kept in sync with bootloader.h
+ */
 MEMORY
 {
-    /* Bootloader region (32KB) */
-    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 128K
+    /* Bootloader Reserved Region (256KB total) */
+    /* Physical Flash is aliased at 0x00200000 for faster instruction fetch via ITCM */
+    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 256K
     
-    /* Application region (512KB) */
-    APP_FLASH (rx)       : ORIGIN = 0x08040000, LENGTH = 512K
+    /* Active Application Region (256KB) */
+    APP_ACTIVE (rx)       : ORIGIN = 0x08040000, LENGTH = 256K
+
+    /* Firmware Storage Slots (512KB each) */
+    SLOT0 (rx)            : ORIGIN = 0x08080000, LENGTH = 512K  /* Sector 6 & 7 */
+    SLOT1 (rx)            : ORIGIN = 0x080C0000, LENGTH = 512K  /* Sector 8 & 9 */
     
-    /* RAM regions */
-    DTCM_RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K    /* Data TCM RAM */
-    RAM (xrw)           : ORIGIN = 0x20020000, LENGTH = 384K    /* SRAM1 + SRAM2 */
-    ITCM_RAM (xrw)      : ORIGIN = 0x00000000, LENGTH = 16K     /* Instruction TCM RAM */
+    /* RAM Regions */
+    DTCM_RAM (xrw)        : ORIGIN = 0x20000000, LENGTH = 128K  /* Data TCM RAM */
+    RAM (xrw)             : ORIGIN = 0x20020000, LENGTH = 384K  /* SRAM1 + SRAM2 */
+    ITCM_RAM (xrw)        : ORIGIN = 0x00000000, LENGTH = 16K   /* Instruction TCM RAM (SRAM, not the flash alias) */
 }
 
 /* Highest address of the user mode stack */
