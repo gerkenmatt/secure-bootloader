@@ -9,12 +9,12 @@ MEMORY
     /* Physical Flash is aliased at 0x00200000 for faster instruction fetch via ITCM */
     BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 256K
     
-    /* Active Application Region (256KB) */
-    APP_ACTIVE (rx)       : ORIGIN = 0x08040000, LENGTH = 256K
+    /* Active Application Region (512KB) */
+    APP_ACTIVE (rx)       : ORIGIN = 0x08040000, LENGTH = 512K  /* Sector 5 & 6 */
 
     /* Firmware Storage Slots (512KB each) */
-    SLOT0 (rx)            : ORIGIN = 0x08080000, LENGTH = 512K  /* Sector 6 & 7 */
-    SLOT1 (rx)            : ORIGIN = 0x080C0000, LENGTH = 512K  /* Sector 8 & 9 */
+    SLOT0 (rx)            : ORIGIN = 0x08080000, LENGTH = 512K  /* Sector 7 & 8 */
+    SLOT1 (rx)            : ORIGIN = 0x080C0000, LENGTH = 512K  /* Sector 9 & 10 */
     
     /* RAM Regions */
     DTCM_RAM (xrw)        : ORIGIN = 0x20000000, LENGTH = 128K  /* Data TCM RAM */

@@ -23,17 +23,6 @@ void Default_Handler(void) {
     while (1);
 }
 
-// void HardFault_Handler(void)
-// {
-//     while (1)
-//     {
-//         // led blinks
-//         GPIOB->ODR ^= (1UL << 7); //toggle blue
-//         GPIOB->ODR ^= (1UL << 14); //toggle red
-//         for (volatile int i = 0; i < 1000000; i++);
-//     }
-// }
-
 void HardFault_Handler(void)
 {
     uint32_t hfsr = SCB->HFSR;
@@ -41,10 +30,6 @@ void HardFault_Handler(void)
     uint8_t mmfsr = (uint8_t)(cfsr & 0xFF);
     uint8_t bfsr  = (uint8_t)((cfsr >> 8) & 0xFF);
     uint16_t ufsr = (uint16_t)((cfsr >> 16) & 0xFFFF);
-
-    // Optional: capture fault addresses if valid
-    volatile uint32_t mmfar = SCB->MMFAR;
-    volatile uint32_t bfar  = SCB->BFAR;
 
     while (1)
     {

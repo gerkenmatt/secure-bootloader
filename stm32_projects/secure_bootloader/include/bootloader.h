@@ -50,16 +50,16 @@ typedef enum {
 #define BOOTLOADER_SIZE          (256 * 1024)   // 256KB
 #define BOOTLOADER_START_PHYS    FLASH_BASE_ADDR
 #define BOOTLOADER_START_ALIAS   ITCM_FLASH_ADDR
-#define APPLICATION_START_ADDR   0x08040000
+#define APPLICATION_START_ADDR   0x08040000     // Starts at Sector 5
 
-#define SLOT0_ADDR               0x08080000     // Starts at Sector 6
-#define SLOT1_ADDR               0x08100000     // Starts at Sector 8
-#define SLOT_SIZE                0x80000        // 512KB
+#define SLOT0_ADDR               0x080C0000     // Starts at Sector 7
+#define SLOT1_ADDR               0x08140000     // Starts at Sector 9
+#define SLOT_SIZE                0x80000        // 512KB (occupies two 256KB sectors)
 
 #define CONFIG_SECTOR            3
 #define CONFIG_ADDR              0x08018000     // 32 KB sector for bootloader config
-#define SLOT0_SECTOR             6
-#define SLOT1_SECTOR             8
+#define SLOT0_SECTOR             7
+#define SLOT1_SECTOR             9
 
 // -----------------------------------------------------------------------------
 // Boot Configuration
