@@ -143,10 +143,10 @@ async def perform_ota_update(host: OTAHost, fw_data: bytes, sig_data: bytes, exp
         print(CYAN + f"  TEST_OTA_LOGIC: Attempting OTA: FW Size={fw_size}, Sig Size={len(sig_data)}, Expect Success={expect_success}" + RESET)
 
     if host.verbose:
-        print(CYAN + "  TEST_OTA_LOGIC: Sending 'ota' text command to enter OTA mode..." + RESET)
+        print(CYAN + "  TEST_OTA_LOGIC: Sending 'update' text command to enter OTA mode..." + RESET)
     await host.clear_device_logs()
     # host.send_text_command respects host.verbose
-    if not await host.send_text_command("ota", expected_response_log="Entering OTA mode...", log_timeout=5):
+    if not await host.send_text_command("update", expected_response_log="Entering OTA mode...", log_timeout=5):
         print(RED + "  TEST_OTA_LOGIC: Failed to enter OTA mode." + RESET)
         return False # Cannot proceed if OTA mode isn't entered
 

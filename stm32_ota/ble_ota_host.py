@@ -2,6 +2,7 @@ import asyncio
 import struct
 import zlib
 from bleak import BleakClient, BleakScanner
+import os
 
 # === BLE Configuration ===
 DEVICE_NAME    = "ESP32_OTA_BLE"
@@ -157,10 +158,32 @@ async def main():
 
                 if cmd in ("exit", "quit", "q"):
                     break
-                elif cmd == "send":
-                    base = input("Enter firmware name (e.g., blinky): ").strip()
-                    fw_path = f"firmware/{base}.bin"
-                    sig_path = f"firmware/{base}.sig"
+                elif cmd.lower().startswith("update"):
+                    parts = cmd.split()
+                    if len(parts) != 2:
+                        print(RED + "Invalid command. Usage: update <firmware_name>" + RESET)
+                        continue
+                    
+                    base_name = parts[1]
+                    fw_path = f"firmware/{base_name}.bin"
+                    sig_path = f"firmware/{base_name}.sig"
+
+                    if not os.path.exists(fw_path):
+                        print(RED + f"[Error] Firmware file not found: {fw_path}" + RESET)
+                        continue
+                    
+                    if not os.path.exists(sig_path):
+                        print(RED + f"[Error] Signature file not found: {sig_path}" + RESET)
+                        continue
+
+                    print(f"Initiating update for firmware: '{base_name}'")
+                    # Send "update" command to put bootloader into OTA transaction mode
+                    await client.write_gatt_char(CHAR_RX_UUID, b"update\n")
+                    
+                    # Give the bootloader a moment to switch modes
+                    await asyncio.sleep(0.1)
+
+                    # Start the detailed OTA transaction
                     await send_ota_sequence(client, fw_path, sig_path)
                 else:
                     await client.write_gatt_char(CHAR_RX_UUID, (cmd + "\n").encode())

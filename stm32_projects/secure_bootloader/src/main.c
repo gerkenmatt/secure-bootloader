@@ -51,7 +51,7 @@ int main(void)
  */
 static void log_state_transition(bootloader_state_t new_state) {
     switch (new_state) {
-        case BL_STATE_READY:      usart_puts("Bootloader ready. Waiting for command (run/ota)...\r\n"); break;
+        case BL_STATE_READY:      usart_puts("Bootloader ready. Waiting for command (run/update)...\r\n"); break;
         case BL_STATE_RECEIVING: usart_puts("State: Receiving firmware\r\n"); break;
         case BL_STATE_PROGRAMMING: usart_puts("State: Programming flash\r\n"); break;
         case BL_STATE_VERIFY:    usart_puts("State: Verifying firmware\r\n"); break;

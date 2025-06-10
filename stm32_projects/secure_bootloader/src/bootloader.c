@@ -77,7 +77,7 @@ void process_bootloader_command(void)
         usart_puts("Run application...\r\n");
         bootloader_jump_to_application(APPLICATION_START_ADDR);
     }
-    else if (strcmp(cmd_buf, "ota") == 0)
+    else if (strcmp(cmd_buf, "update") == 0)
     {
         usart_puts("Entering OTA mode...\r\n");
         bootloader_set_state(BL_STATE_RECEIVING);
@@ -88,7 +88,7 @@ void process_bootloader_command(void)
     {
         usart_puts("Available commands:\r\n");
         usart_puts("  run  - Jump to application\r\n");
-        usart_puts("  ota  - Start OTA update mode\r\n");
+        usart_puts("  update <firmare_path>  - Start OTA update mode\r\n");
         usart_puts("  p    - Print first 10 words of application flash\r\n");
         usart_puts("  help - Show this message\r\n");
         usart_puts("  reboot - Reboot the device\r\n");
