@@ -64,7 +64,7 @@ typedef enum {
 // -----------------------------------------------------------------------------
 
 #define BOOT_CONFIG_MAGIC        0xB007CF60
-#define BOOT_ATTEMPT_COUNT       3             // Number of boot attempts before rollback
+#define BOOT_ATTEMPT_COUNT       7            // Number of boot attempts before rollback
 
 
 typedef struct {

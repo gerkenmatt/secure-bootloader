@@ -17,6 +17,7 @@ static void bootloader_jump_to(uint32_t app_address);
 static void handle_erase_command(const char* cmd_arg); 
 static void handle_print_command(const char* cmd_arg); 
 static void handle_bootloader_info(void);
+static void handle_activate_command(const char* cmd_arg);
 
 // --- Public Functions ---
 
@@ -128,6 +129,10 @@ void process_bootloader_command(void)
         //     usart_puts(" ");
         // }
     }
+    else if (strncmp(cmd_buf, "activate ", 9) == 0) 
+    {
+        handle_activate_command(cmd_buf + 9);
+    }
     else if (strcmp(cmd_buf, "help") == 0 || strcmp(cmd_buf, "h") == 0)
     {
         usart_puts("Available commands:\r\n");
@@ -138,6 +143,13 @@ void process_bootloader_command(void)
         usart_puts("  info - Show bootloader information\r\n");
         usart_puts("  help - Show this message\r\n");
         usart_puts("  reboot - Reboot the device\r\n");
+    }
+    else if (strcmp(cmd_buf, "status") == 0)
+    {
+        const bootloader_config_t* cfg = read_boot_config();
+        usart_puts("Active slot: ");
+        print_uint32_hex(cfg->active_slot);
+        usart_puts("\r\n");
     }
     else
     {
@@ -434,7 +446,8 @@ static void handle_print_command(const char* cmd_arg)
     usart_puts("\r\n");
 }
 
-static void handle_bootloader_info(void) {
+static void handle_bootloader_info(void) 
+{
     const bootloader_config_t* cfg = read_boot_config();
     usart_puts("Bootloader Configuration:\r\n");
     usart_puts("|  Magic: 0x"); print_uint32_hex(cfg->magic); usart_puts("\r\n");
@@ -453,4 +466,35 @@ static void handle_bootloader_info(void) {
 const bootloader_config_t* read_boot_config(void) 
 {
     return (const bootloader_config_t*)CONFIG_ADDR;
+}
+
+/**
+ * @brief Handles the 'activate' command to switch the active slot.
+ * @param cmd_arg The argument string following "activate ", e.g., "0" or "1".
+ */
+static void handle_activate_command(const char* cmd_arg) 
+{
+    int slot_to_activate = atoi(cmd_arg);
+    if (slot_to_activate != 0 && slot_to_activate != 1) 
+    {
+        log("Invalid slot specified. Use 'activate 0' or 'activate 1'.\r\n");
+        return;
+    }
+    const bootloader_config_t* cfg = read_boot_config();
+    // if (!cfg->slot[slot_to_activate].is_valid) 
+    // {
+    //     log("Cannot activate an invalid slot.\r\n");
+    //     return;
+    // }
+    bootloader_config_t new_cfg;
+    memcpy(&new_cfg, cfg, sizeof(bootloader_config_t));
+    new_cfg.active_slot = slot_to_activate;
+    if (!write_boot_config(&new_cfg)) 
+    {
+        log("Failed to update boot config for slot activation.\r\n");
+    } 
+    else 
+    {
+        log("Active slot switched to: "); print_uint32_hex(slot_to_activate); log("\r\n");
+    }
 }

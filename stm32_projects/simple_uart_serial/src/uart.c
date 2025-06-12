@@ -5,7 +5,8 @@
 #define USARTDIV       (SYSCLK_FREQ / USART_BAUDRATE)
 #define AF7            0x07  // Alternate function 7 for USART3
 
-void usart_init(void) {
+void usart_init(void) 
+{
     RCC->AHB1ENR |= RCC_AHB1ENR_GPIODEN;
     RCC->APB1ENR |= RCC_APB1ENR_USART3EN;
 
@@ -20,25 +21,30 @@ void usart_init(void) {
     USART3->CR1 |= USART_CR1_UE;
 }
 
-void usart_putc(uint8_t ch) {
+void usart_putc(uint8_t ch) 
+{
     USART3->TDR = ch;
     while (!(USART3->ISR & USART_ISR_TC));
 }
 
-uint8_t usart_getc(void) {
+uint8_t usart_getc(void) 
+{
     while (!(USART3->ISR & USART_ISR_RXNE));
     return USART3->RDR;
 }
 
-void usart_puts(const char *str) {
+void usart_puts(const char *str) 
+{
     while (*str) {
         usart_putc(*str++);
     }
 }
 
-void usart_gets(char *buffer, uint32_t max_len) {
+void usart_gets(char *buffer, uint32_t max_len) 
+{
     uint32_t i = 0;
-    while (i < (max_len - 1)) {
+    while (i < (max_len - 1)) 
+    {
         char ch = usart_getc();
         usart_putc(ch);
         if (ch == '\r' || ch == '\n') break;
