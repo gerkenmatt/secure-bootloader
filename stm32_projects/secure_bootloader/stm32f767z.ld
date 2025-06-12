@@ -1,25 +1,28 @@
 /* Linker script for STM32F767ZIT */
 
-/* Memory regions for STM32F767ZI
+/* Memory regions for STM32F767ZI A/B Partition Swap
  * These values should be kept in sync with bootloader.h
  */
 MEMORY
 {
-    /* Bootloader Reserved Region (128KB total) */
-    /* Physical Flash is aliased at 0x00200000 for faster instruction fetch via ITCM */
-    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 128K  /* Sector 0, 1, 2, and 3 */
-    
-    /* Active Application Region (512KB) */
-    APP_ACTIVE (rx)       : ORIGIN = 0x08040000, LENGTH = 512K  /* Sector 5 & 6 */
+    /* Bootloader Region (128KB). Contains bootloader code . */
+    /* Sectors 0-3 @ 32KB each = 128KB */
+    BOOTLOADER_FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 128K
 
-    /* Firmware Storage Slots (512KB each) */
-    SLOT0 (rx)            : ORIGIN = 0x08080000, LENGTH = 512K  /* Sector 7 & 8 */
-    SLOT1 (rx)            : ORIGIN = 0x080C0000, LENGTH = 512K  /* Sector 9 & 10 */
-    
-    /* RAM Regions */
-    DTCM_RAM (xrw)        : ORIGIN = 0x20000000, LENGTH = 128K  /* Data TCM RAM */
-    RAM (xrw)             : ORIGIN = 0x20020000, LENGTH = 384K  /* SRAM1 + SRAM2 */
-    ITCM_RAM (xrw)        : ORIGIN = 0x00000000, LENGTH = 16K   /* Instruction TCM RAM (SRAM, not the flash alias) */
+    /* Application Slot A (768KB). One of two swappable application slots. */
+    /* Sectors 5, 6, 7 @ 256KB each */
+    SLOTA (rx)            : ORIGIN = 0x08040000, LENGTH = 768K
+
+    /* Application Slot B (768KB). The second swappable application slot. */
+    /* Sectors 8, 9, 10 @ 256KB each */
+    SLOTB (rx)            : ORIGIN = 0x08100000, LENGTH = 768K
+
+    BOOT_CONFIG (rx)      : ORIGIN = 0x081C0000, LENGTH = 256K 
+
+    /* RAM Regions (remain unchanged) */
+    DTCM_RAM (xrw)        : ORIGIN = 0x20000000, LENGTH = 128K
+    RAM (xrw)             : ORIGIN = 0x20020000, LENGTH = 384K
+    ITCM_RAM (xrw)        : ORIGIN = 0x00000000, LENGTH = 16K
 }
 
 /* Highest address of the user mode stack */

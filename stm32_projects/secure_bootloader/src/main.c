@@ -5,16 +5,12 @@
 #include "stm32f7xx.h"
 #include "uart.h"
 
-// -----------------------------------------------------------------------------
-// Function Prototypes 
-// -----------------------------------------------------------------------------
+// --- Function Prototypes ---
 static void system_init(void);
 static void log_state_transition(bootloader_state_t new_state);
 
 
-// -----------------------------------------------------------------------------
-// Main Entry Point
-// -----------------------------------------------------------------------------
+// --- Main Entry Point ---
 int main(void)
 {
     bootloader_state_t current_state = BL_STATE_IDLE;

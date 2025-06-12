@@ -8,13 +8,16 @@
 // Function Prototypes
 // -----------------------------------------------------------------------------
 
+bool program_flash(uint32_t addr, const uint32_t* data, uint32_t length);
+
 /**
  * Programs a single 32-bit word to flash memory
  * 
  * @param addr The flash address to program (must be 4-byte aligned)
  * @param word The 32-bit word to write
+ * @return true if the word was programmed successfully, false otherwise
  */
-void program_flash_word(uint32_t addr, uint32_t word);
+bool program_flash_word(uint32_t addr, uint32_t word);
 
 /**
  * Erases a range of flash sectors
@@ -31,6 +34,11 @@ bool erase_flash_sectors(uint8_t start_sector, uint8_t end_sector, uint32_t star
  * Unlocks the flash memory
  */
 void unlock_flash(void);
+
+/**
+ * Locks the flash memory after programming
+ */
+void lock_flash(void);
 
 /**
  * Gets the sector number from a given flash address

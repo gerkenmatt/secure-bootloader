@@ -18,14 +18,21 @@
 #define CHUNK_SIZE 256
 #define PUBKEY_DER_LEN 91
 
-// OTA session state
-static ota_header_info_t ota_header;
-static uint32_t flash_write_addr = SLOT1_ADDR;
+// --- OTA Session State ---
+// This struct holds the context for the current OTA session.
+typedef struct {
+    ota_header_info_t header;         // Firmware size and CRC from the header packet
+    uint32_t flash_write_address;     // The starting address of the slot being written to
+    uint8_t  inactive_slot_index;     // The index (0 or 1) of the slot being updated
+    uint8_t  signature[SIG_MAX_LEN];  // Buffer for the received firmware signature
+    uint16_t signature_length;        // Length of the received signature
+} ota_session_t;
 
-// storage for the incoming signature:
-static uint8_t  ota_signature[SIG_MAX_LEN];
-static uint16_t ota_sig_len;
+static ota_session_t ota_session; // A single instance for the OTA process
 
+// --- Public Key ---
+// The public key is embedded in the bootloader to verify firmware signatures.
+// For production, this key should be protected against tampering.
 static const unsigned char pubkey_der[] = {
   0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02,
   0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
@@ -37,52 +44,55 @@ static const unsigned char pubkey_der[] = {
   0x29, 0x46, 0x41, 0xef, 0x57, 0x38, 0x74
 };
 
+// --- Static Function Prototypes ---
+
+static bool process_cmd_start(void);
+static bool process_cmd_end(void);
+static void handle_ota_header(const ota_frame_t* frame);
+static void handle_ota_data(const ota_frame_t* frame);
+static void handle_ota_signature(const ota_frame_t* frame);
+static bool verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t *sig, uint16_t sig_len);
+
+// --- Public Functions ---
 
 bool handle_ota_session(void) {
     log("Waiting for OTA packets...\r\n");
 
     while (1) {
-        ota_frame_t frame;
 
-        // Try to receive a valid frame
-        if (ota_receive_frame(&frame)) {
-            // Process frame based on its type
-            switch (frame.type) {
-                case PACKET_CMD:    
-                    if (!handle_ota_command(&frame)) {
-                        // Exit OTA session if handler returns false
-                        return false;
-                    }
-                    break;
-                case PACKET_HEADER: 
-                    handle_ota_header(&frame);  // Process firmware metadata
-                    break;
-                case PACKET_DATA:   
-                    handle_ota_data(&frame);    // Handle firmware data chunks
-                    break;
-                case PACKET_SIG:
-                    handle_ota_signature(&frame); // Handle firmware signature
-                    break;
-                default:
-                    // Invalid/unknown packet type
-                    ota_send_response(RESP_NACK);
-                    log("Unknown packet type\r\n");
-                    break;
-            }
-        } 
-        else {
-            // Frame validation failed
-            ota_send_response(RESP_NACK);
-            log("Invalid frame\r\n");
+        ota_frame_t frame;
+        if (!ota_receive_frame(&frame)) {
+            log("Invalid frame received.\r\n");
+            continue; 
+        }
+
+        // Process a valid frame based on its type
+        switch (frame.type) {
+            case PACKET_CMD:
+                if (!handle_ota_command(&frame)) {
+                    // This indicates a command was received that should terminate the session (e.g., failed CMD_END)
+                    log("Exiting OTA session due to command handler result.\r\n");
+                    return false;
+                }
+                break;
+            case PACKET_HEADER:  handle_ota_header(&frame);      break;
+            case PACKET_DATA:    handle_ota_data(&frame);        break;
+            case PACKET_SIG:     handle_ota_signature(&frame);   break;
+            default:
+                ota_send_response(RESP_NACK);
+                log("Unknown packet type\r\n");
+                break;
         }
     }
     return true;
 }
 
+// --- Frame Reception and Command Handling ---
+
 bool ota_receive_frame(ota_frame_t* frame) {
+
     // Validate input parameter
     if (!frame) {
-        ota_send_response(RESP_NACK);
         log("Frame pointer is NULL\r\n");
         return false;
     }
@@ -98,7 +108,7 @@ bool ota_receive_frame(ota_frame_t* frame) {
     frame->type = usart_getc();
     uint8_t len_lo = usart_getc();
     uint8_t len_hi = usart_getc();
-    frame->length = (len_hi << 8) | len_lo;
+    frame->length = (uint16_t)((len_hi << 8) | len_lo);
 
     // Validate frame length
     if (frame->length > OTA_MAX_DATA) {
@@ -133,15 +143,18 @@ bool ota_receive_frame(ota_frame_t* frame) {
     return true;
 }
 
-// Helper prototypes
-static bool process_cmd_start(void);
-static bool process_cmd_end(void);
-
-bool handle_ota_command(const ota_frame_t* frame) {
+bool handle_ota_command(const ota_frame_t* frame) 
+{
     // Validate frame has at least 1 byte for command
-    if (frame->length < 1) return true;
+    if (frame->length < 1) 
+    {
+        log("Command packet has no payload\r\n");
+        ota_send_response(RESP_NACK);
+        return true; // Stay in OTA session
+    }
 
-    switch (frame->data[0]) {
+    switch (frame->data[0]) 
+    {
         case CMD_START:
             return process_cmd_start();
         case CMD_END:
@@ -155,20 +168,60 @@ bool handle_ota_command(const ota_frame_t* frame) {
     return true;
 }
 
-// Move CMD_START logic here
-static bool process_cmd_start(void) {
+// --- Static Helper Functions ---
+
+/**
+ * @brief Processes the CMD_START command to prepare for OTA update.
+ * 
+ * This function clears any previous flash error flags, sets the green LED,
+ * determines the inactive slot for writing, erases the necessary flash sectors,
+ * and sends an ACK response if successful.
+ *
+ * @return true if successful, false if flash erase failed
+ */
+static bool process_cmd_start(void) 
+{
     // Clear any previous flash error flags
-    FLASH->SR |= FLASH_SR_WRPERR | FLASH_SR_PGAERR | FLASH_SR_OPERR |
-                 FLASH_SR_PGPERR | FLASH_SR_ERSERR;
-    GPIOB->ODR |= (1UL << 0); //set_green
-    flash_write_addr = SLOT1_ADDR;
-    // Unlock flash if locked
+    clear_flash_errors();
+
+    // Determine which slot is inactive and prepare it
+    const bootloader_config_t* cfg = read_boot_config();
+    ota_session.inactive_slot_index = (cfg->active_slot == SLOTA) ? SLOTB : SLOTA;
+    
+    uint32_t inactive_slot_addr = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
+    uint8_t  inactive_slot_sector = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
+
+    // Initialize the session context for this OTA
+    memset(&ota_session.header, 0, sizeof(ota_session.header));
+    ota_session.flash_write_address = inactive_slot_addr;
+    ota_session.signature_length = 0;
+
     unlock_flash();
+    clear_flash_errors();
+
     // Configure flash access control and program size
-    FLASH->ACR |= (1 << 8) | (1 << 9); // Enable instruction and data cache
+    FLASH->ACR |= (1 << 8) | (1 << 9);  // Enable instruction and data cache
     FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
-    // Erase slot1 sector (sector for new firmware)
-    if (!erase_flash_sectors(SLOT1_SECTOR, SLOT1_SECTOR, flash_write_addr, ota_header.fw_size)) {
+
+    // uint32_t errs = FLASH->SR;
+    // // Erase the config sector
+    // // program_flash_word(SLOTA_ADDR, 0xbeefb00b);
+    // // log("slota first word: "); print_uint32_hex(*(volatile uint32_t*)SLOTA_ADDR); log("\r\n");
+    // if (!erase_flash_sectors(CONFIG_SECTOR, CONFIG_SECTOR, CONFIG_ADDR, 0x40000)) 
+    // {
+    //     log("Failed to eraseb config sector!\r\n");
+    //     log("Flash errors before: "); print_uint32_hex(errs); log("\r\n");
+    //     lock_flash(); // Always re-lock flash
+    //     return false;
+    // }
+
+    // Erase inactive slot sectors
+    if (!erase_flash_sectors(
+        inactive_slot_sector, 
+        inactive_slot_sector + SLOT_SECTOR_COUNT -1, 
+        inactive_slot_addr, 
+        SLOT_SIZE)) 
+    {
         ota_send_response(RESP_NACK);
         log("Flash erase failed\r\n");
         return true;
@@ -178,69 +231,75 @@ static bool process_cmd_start(void) {
     return true;
 }
 
-// Move CMD_END logic here
+/**
+ * @brief Processes the CMD_END command to finalize the OTA update.
+ * 
+ * Verifies the firmware signature, updates bootloader configuration,
+ * locks the flash memory, and reboots the system.
+ *
+ * @return true if successful, false if signature verification failed
+ */
 static bool process_cmd_end(void) {
+    log("CMD_END received. Finalizing update...\r\n");
+
+    uint32_t inactive_slot_addr = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
+
+    // 1. Verify the signature of the newly downloaded firmware
     log("Verifying signature...\r\n");
     if (!verify_signature(
-            (uint8_t*)SLOT1_ADDR,
-            ota_header.fw_size,
-            ota_signature,
-            ota_sig_len))
+        (uint8_t*)inactive_slot_addr, 
+        ota_session.header.fw_size, 
+        ota_session.signature, 
+        ota_session.signature_length))
     {
-        log("Signature verification failed\r\n");
+        log("Signature verification FAILED. Aborting update.\r\n");
         ota_send_response(RESP_NACK);
         return false;
     }
     log("Signature verified\r\n");
-    bootloader_config_t cfg = *read_boot_config();  // Read current config
-    // Update slot 1 metadata
-    cfg.slot[1].fw_size     = ota_header.fw_size;
-    cfg.slot[1].fw_crc      = ota_header.fw_crc;
-    cfg.slot[1].is_valid    = 1;
-    cfg.slot[1].should_run  = 1;
-    // Clear run flag from slot 0 (optional)
-    cfg.slot[0].should_run = 0;
-    // Keep magic + reboot_cause (or set to OTA_REQUEST if used)
-    cfg.magic = BOOT_CONFIG_MAGIC;
-    cfg.reboot_cause = 1;  // e.g., OTA_REQUEST (if defined)
-    log("Writing boot config...\r\n");
-    if (!write_boot_config(&cfg)) {
+    lock_flash(); // for debugging
+
+    // 2. Prepare the new configuration with the atomic swap
+    bootloader_config_t new_cfg;
+    memcpy(&new_cfg, read_boot_config(), sizeof(bootloader_config_t)); // Make a mutable copy
+
+    // Update metadata for the new firmware slot
+    new_cfg.slot[ota_session.inactive_slot_index].fw_size = ota_session.header.fw_size;
+    new_cfg.slot[ota_session.inactive_slot_index].fw_crc = ota_session.header.fw_crc;
+    new_cfg.slot[ota_session.inactive_slot_index].is_valid = 1;
+    new_cfg.slot[ota_session.inactive_slot_index].boot_attempts_remaining = BOOT_ATTEMPT_COUNT;
+
+    // Perform the atomic swap by changing the active slot index
+    new_cfg.active_slot = ota_session.inactive_slot_index;
+
+    // 3. Write the new configuration back to flash
+    log("Writing boot config to activate slot\r\n");
+    if (!write_boot_config(&new_cfg)) 
+    {
         ota_send_response(RESP_NACK);
         log("Failed to write boot config\r\n");
-        return true;
+        return false; // Terminate OTA session, something is wrong with flash config
     }
     log("Boot config written\r\n");
     ota_send_response(RESP_ACK);
+
     // OTA update complete, lock flash and reboot
     FLASH->CR |= FLASH_CR_LOCK;
-    log("Flash locked\r\n"); log("Rebooting...\r\n");
-    SCB_CleanDCache();        // Clean data cache
+    log("Flash locked\r\nRebooting...\r\n");
+    SCB_CleanDCache();        // Clean data cache ----- TODO: is this needed? 
     NVIC_SystemReset();       // Reset system
-    return true;
+
+    return false; // Code should not reach here
 }
 
-void ota_send_response(uint8_t status) {
-    uint8_t payload[] = {status};
-    uint32_t crc = crc32(payload, sizeof(payload)); // Assuming crc32 function is available
-
-    uint8_t frame[] = {
-        OTA_SOF, PACKET_RESP, 
-        (uint8_t)(sizeof(payload) & 0xFF), // len_lo
-        (uint8_t)((sizeof(payload) >> 8) & 0xFF), // len_hi
-        status,
-        (uint8_t)(crc & 0xFF),
-        (uint8_t)((crc >> 8) & 0xFF),
-        (uint8_t)((crc >> 16) & 0xFF),
-        (uint8_t)((crc >> 24) & 0xFF),
-        OTA_EOF
-    };
-    // Send frame via usart_putc loop
-    for (size_t i = 0; i < sizeof(frame); i++) {
-        usart_putc(frame[i]);
-    }
-}
-
-void handle_ota_header(const ota_frame_t* frame) {
+/**
+ * @brief Handles incoming OTA header packet containing firmware metadata.
+ * 
+ * Validates header length and copies metadata to global ota_header struct.
+ *
+ * @param frame Pointer to received OTA frame
+ */
+static void handle_ota_header(const ota_frame_t* frame) {
     // Verify header length matches expected size
     if (frame->length != sizeof(ota_header_info_t)) {
         ota_send_response(RESP_NACK);
@@ -249,12 +308,27 @@ void handle_ota_header(const ota_frame_t* frame) {
     }
 
     // Copy header data to global struct
-    memcpy(&ota_header, frame->data, sizeof(ota_header_info_t));
+    memcpy(&ota_session.header, frame->data, sizeof(ota_header_info_t));
+
+    // Sanity check firmware size against slot size
+    if (ota_session.header.fw_size > SLOT_SIZE) {
+        log("Firmware size exceeds slot size\r\n");
+        ota_send_response(RESP_NACK);
+        return;
+    }
+
     ota_send_response(RESP_ACK);
 }
 
-
-void handle_ota_data(const ota_frame_t* frame) {
+/**
+ * @brief Handles incoming OTA data packets containing firmware binary.
+ * 
+ * Validates data length, programs data to flash in 32-bit words,
+ * and verifies written data.
+ *
+ * @param frame Pointer to received OTA frame
+ */
+static void handle_ota_data(const ota_frame_t* frame) {
     // Validate data length is within bounds
     if (frame->length == 0 || frame->length > OTA_MAX_DATA) {
         ota_send_response(RESP_NACK);
@@ -262,33 +336,26 @@ void handle_ota_data(const ota_frame_t* frame) {
         return;
     }
 
-    // Process data in 32-bit word chunks
-    for (uint16_t i = 0; i < frame->length; i += 4) {
-        uint32_t word = 0xFFFFFFFF;
-        // Handle partial words at end of frame
-        uint16_t len = (frame->length - i >= 4) ? 4 : (frame->length - i);
-        memcpy(&word, &frame->data[i], len);
-
-        // Program word to flash
-        program_flash_word(flash_write_addr, word);
-
-        // Verify written data
-        uint32_t verify = *(volatile uint32_t *)flash_write_addr;
-        if (verify != word) {
-            ota_send_response(RESP_NACK);
-            log("Flash verify failed\r\n");
-            log("Expected: "); print_uint32_hex(word);
-            log("\r\nReadback: "); print_uint32_hex(verify); log("\r\n");
-            return;
-        }
-
-        flash_write_addr += 4;
+    // Write data chunk to the correct address in the inactive slot
+    if (!program_flash(ota_session.flash_write_address, (uint32_t*)frame->data, frame->length)) {
+        ota_send_response(RESP_NACK);
+        log("Flash write failed at address: "); print_uint32_hex(ota_session.flash_write_address); log("\r\n");
+        return;
     }
 
+    // Update write address for the next chunk
+    ota_session.flash_write_address += frame->length;
     ota_send_response(RESP_ACK);
 }
 
-void handle_ota_signature(const ota_frame_t* frame) {
+/**
+ * @brief Handles incoming OTA signature packet containing firmware signature.
+ * 
+ * Validates signature length and copies signature to global ota_signature struct.
+ *
+ * @param frame Pointer to received OTA frame
+ */
+static void handle_ota_signature(const ota_frame_t* frame) {
     // sanity check
     if (frame->length > SIG_MAX_LEN) {
         ota_send_response(RESP_NACK);
@@ -296,15 +363,21 @@ void handle_ota_signature(const ota_frame_t* frame) {
         return;
     }
     // copy it into RAM
-    memcpy(ota_signature, frame->data, frame->length);
-    ota_sig_len = frame->length;
+    memcpy(ota_session.signature, frame->data, frame->length);
+    ota_session.signature_length = frame->length;
     ota_send_response(RESP_ACK);
 }
 
-bool verify_signature(const uint8_t *data,
-                      uint32_t      data_len,
-                      const uint8_t *sig,
-                      uint16_t      sig_len)
+/**
+ * @brief Verifies the signature of a firmware image.
+ * 
+ * @param data Pointer to the firmware image data
+ * @param data_len Length of the firmware image data
+ * @param sig Pointer to the signature data
+ * @param sig_len Length of the signature data
+ * @return true if signature is valid, false otherwise
+ */
+static bool verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t *sig, uint16_t sig_len)
 {
     int ret;
     uint8_t hash[32]; // SHA-256 output is 32 bytes
@@ -371,3 +444,23 @@ bool verify_signature(const uint8_t *data,
 }
 
 
+void ota_send_response(uint8_t status) {
+    uint8_t payload[] = {status};
+    uint32_t crc = crc32(payload, sizeof(payload)); // Assuming crc32 function is available
+
+    uint8_t frame[] = {
+        OTA_SOF, PACKET_RESP, 
+        (uint8_t)(sizeof(payload) & 0xFF), // len_lo
+        (uint8_t)((sizeof(payload) >> 8) & 0xFF), // len_hi
+        status,
+        (uint8_t)(crc & 0xFF),
+        (uint8_t)((crc >> 8) & 0xFF),
+        (uint8_t)((crc >> 16) & 0xFF),
+        (uint8_t)((crc >> 24) & 0xFF),
+        OTA_EOF
+    };
+    // Send frame via usart_putc loop
+    for (size_t i = 0; i < sizeof(frame); i++) {
+        usart_putc(frame[i]);
+    }
+}
