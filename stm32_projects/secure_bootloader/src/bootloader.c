@@ -14,6 +14,9 @@ static bootloader_state_t current_state = BL_STATE_IDLE;
 
 // --- Function Prototypes ---
 static void bootloader_jump_to(uint32_t app_address);
+static void handle_erase_command(const char* cmd_arg); 
+static void handle_print_command(const char* cmd_arg); 
+static void handle_bootloader_info(void);
 
 // --- Public Functions ---
 
@@ -107,11 +110,16 @@ void process_bootloader_command(void)
     }
     else if (strcmp(cmd_buf, "info") == 0) 
     {
-        log("Bootloader Info:\r\n");
-        log("------ will put in later ------\r\n");
+        handle_bootloader_info();
     }
-    else if (strcmp(cmd_buf, "p") == 0)
+    else if (strncmp(cmd_buf, "erase ", 6) == 0) 
     {
+        // Handle "erase <slot_num>"
+        handle_erase_command(cmd_buf + 6);
+    }
+    else if (strncmp(cmd_buf, "p ", 2) == 0) {
+        // Handle "p <slot_num>"
+        handle_print_command(cmd_buf + 2);
         // volatile uint32_t* flash_addr = (volatile uint32_t*)APPLICATION_START_ADDR;
         // usart_puts("First 10 words at APPLICATION_START_ADDR:\r\n");
         // for (int i = 0; i < 10; i++)  // Read 10 32-bit words
@@ -119,14 +127,14 @@ void process_bootloader_command(void)
         //     print_uint32_hex(flash_addr[i]);
         //     usart_puts(" ");
         // }
-        usart_puts("placeholder\r\n");
     }
     else if (strcmp(cmd_buf, "help") == 0 || strcmp(cmd_buf, "h") == 0)
     {
         usart_puts("Available commands:\r\n");
         usart_puts("  run  - Jump to application\r\n");
         usart_puts("  update <firmare_path>  - Start OTA update mode\r\n");
-        usart_puts("  p    - Print first 10 words of application flash\r\n");
+        usart_puts("  p <0|1> - Print first 10 words of slot flash\r\n");
+        usart_puts("  erase <0|1> - Erase sectors of specified slot\r\n");
         usart_puts("  info - Show bootloader information\r\n");
         usart_puts("  help - Show this message\r\n");
         usart_puts("  reboot - Reboot the device\r\n");
@@ -327,6 +335,120 @@ bool write_boot_config(const bootloader_config_t* new_config)
     return true;
 
 }
+
+/**
+ * @brief Handles the 'erase' command to wipe an application slot.
+ * @param cmd_arg The argument string following "erase ", e.g., "0" or "1".
+ */
+static void handle_erase_command(const char* cmd_arg) 
+{
+    // Convert the argument string to an integer
+    int slot_to_erase = atoi(cmd_arg);
+
+    if (slot_to_erase != 0 && slot_to_erase != 1) 
+    {
+        log("Invalid slot specified. Use 'erase 0' or 'erase 1'.\r\n");
+        return;
+    }
+
+    const bootloader_config_t* cfg = read_boot_config();
+    
+    // // --- SAFETY CHECK ---
+    // // Prevent erasing the currently active slot.
+    // if (slot_to_erase == cfg->active_slot) 
+    // {
+    //     log("Cannot erase the currently active slot\r\n");
+    //     return;
+    // }
+
+    unlock_flash();
+    clear_flash_errors();
+
+    // Configure flash access control and program size
+    FLASH->ACR |= (1 << 8) | (1 << 9);  // Enable instruction and data cache
+    FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
+
+
+    log("Erasing slot: "); print_uint8_hex(slot_to_erase); log("\r\n");
+
+    uint8_t sector_to_erase = (slot_to_erase == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
+    uint32_t erase_slot_addr = (slot_to_erase == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
+
+
+    // Perform the erase
+    if (erase_flash_sectors(
+        sector_to_erase, 
+        sector_to_erase + SLOT_SECTOR_COUNT -1, 
+        erase_slot_addr, 
+        SLOT_SIZE)) 
+    {
+        log("Successfully erased slot\r\n");
+        
+        // Update the bootloader config to mark the slot as invalid
+        bootloader_config_t new_cfg;
+        memcpy(&new_cfg, cfg, sizeof(bootloader_config_t));
+        
+        new_cfg.slot[slot_to_erase].is_valid = 0;
+        new_cfg.slot[slot_to_erase].boot_attempts_remaining = 0;
+        new_cfg.slot[slot_to_erase].fw_size = 0;
+        new_cfg.slot[slot_to_erase].fw_crc = 0xFFFFFFFF;
+        
+        if (!write_boot_config(&new_cfg)) 
+        {
+            log("Failed to update boot config after erase.\r\n");
+        } 
+        else 
+        {
+            log("Boot config updated to reflect erased slot.\r\n");
+        }
+    } 
+    else 
+    {
+        log("Failed to erase slot\r\n");
+    }
+}
+
+/**
+ * @brief Handles the 'p' (print) command to show memory contents of a slot.
+ * @param cmd_arg The argument string following "p ", e.g., "0" or "1".
+ */
+static void handle_print_command(const char* cmd_arg) 
+{
+    int slot_to_print = atoi(cmd_arg);
+
+    if (slot_to_print != 0 && slot_to_print != 1) 
+    {
+        log("Invalid slot specified. Use 'p 0' or 'p 1'.\r\n");
+        return;
+    }
+
+    uint32_t base_addr = (slot_to_print == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
+    volatile uint32_t* flash_addr = (volatile uint32_t*)base_addr;
+
+    usart_puts("First 10 words at SLOT_ADDR:\r\n");
+    for (int i = 0; i < 10; i++)  // Read 10 32-bit words
+    {
+        print_uint32_hex(flash_addr[i]);
+        usart_puts(" ");
+    }
+    usart_puts("\r\n");
+}
+
+static void handle_bootloader_info(void) {
+    const bootloader_config_t* cfg = read_boot_config();
+    usart_puts("Bootloader Configuration:\r\n");
+    usart_puts("|  Magic: 0x"); print_uint32_hex(cfg->magic); usart_puts("\r\n");
+    usart_puts("|  Active Slot: "); print_uint32_hex(cfg->active_slot); usart_puts("\r\n");
+    for (int i = 0; i < 2; i++) {
+        usart_puts("|  Slot "); print_uint32_hex(i); usart_puts(":\r\n");
+        usart_puts("|    is_valid: "); print_uint32_hex(cfg->slot[i].is_valid); usart_puts("\r\n");
+        usart_puts("|    boot_attempts_remaining: "); print_uint32_hex(cfg->slot[i].boot_attempts_remaining); usart_puts("\r\n");
+        usart_puts("|    fw_size: 0x"); print_uint32_hex(cfg->slot[i].fw_size); usart_puts("\r\n");
+        usart_puts("|    fw_crc: 0x"); print_uint32_hex(cfg->slot[i].fw_crc); usart_puts("\r\n");
+    }
+}
+
+
 
 const bootloader_config_t* read_boot_config(void) 
 {
