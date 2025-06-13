@@ -31,48 +31,63 @@ endif
 SRCS := $(wildcard $(SRC_DIR)/*.c)
 OBJS := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS))
 
-# Output Files
-TARGET := $(BUILD_DIR)/$(PROJECT).elf
-HEX    := $(BUILD_DIR)/$(PROJECT).hex
-BIN    := $(BUILD_DIR)/$(PROJECT).bin
+# --- Build Targets ---
+# Define the final binary and ELF files using the project name
+BIN_SLOTA = $(BUILD_DIR)/$(PROJECT)_slota.bin
+BIN_SLOTB = $(BUILD_DIR)/$(PROJECT)_slotb.bin
+ELF_SLOTA = $(BUILD_DIR)/$(PROJECT)_slota.elf
+ELF_SLOTB = $(BUILD_DIR)/$(PROJECT)_slotb.elf
 
 # Flags
 CFLAGS  := -mcpu=cortex-m7 -mthumb -O0 -g -ggdb -Wall -DSTM32F767xx -DFLASH_ADDR=$(FLASH_ADDR) $(INCLUDE_DIRS)
 LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections -Wl,--defsym=__FLASH_ORIGIN=$(FLASH_ADDR) -Wl,--defsym=__FLASH_LENGTH=$(FLASH_LEN)
+# Default target builds both versions
+all: $(BIN_SLOTA) $(BIN_SLOTB)
 
-# Default target
-all: $(TARGET)
+# Rule to create Slot A binary from its specific ELF file
+$(BIN_SLOTA): $(ELF_SLOTA)
+	@echo "Creating binary for Slot A..."
+	$(OBJCOPY) -O binary $< $@
 
-# Linking
-$(TARGET): $(OBJS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -o $@
-	$(OBJCOPY) -O ihex $@ $(HEX)
-	$(OBJCOPY) -O binary $@ $(BIN)
+# Rule to create Slot B binary from its specific ELF file
+$(BIN_SLOTB): $(ELF_SLOTB)
+	@echo "Creating binary for Slot B..."
+	$(OBJCOPY) -O binary $< $@
 
-# Compile source files
+# Rule to link the ELF file for Slot A
+$(ELF_SLOTA): $(OBJS) | $(BUILD_DIR)
+	@echo "--- Linking for Slot A (0x08040000) ---"
+	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -Wl,-Map=$(BUILD_DIR)/$(PROJECT)_slota.map \
+	    -Wl,--defsym=__FLASH_ORIGIN=0x08040000 \
+	    -Wl,--defsym=__FLASH_LENGTH=768K \
+	    -o $@
+
+# Rule to link the ELF file for Slot B
+$(ELF_SLOTB): $(OBJS) | $(BUILD_DIR)
+	@echo "--- Linking for Slot B (0x08100000) ---"
+	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) -Wl,-Map=$(BUILD_DIR)/$(PROJECT)_slotb.map \
+	    -Wl,--defsym=__FLASH_ORIGIN=0x08100000 \
+	    -Wl,--defsym=__FLASH_LENGTH=768K \
+	    -o $@
+
+# Generic Compilation Rule
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Create build directory
+# Utility targets
 $(BUILD_DIR):
-	mkdir -p $@
+	mkdir -p $(BUILD_DIR)
 
-# Clean up
 clean:
 	rm -rf $(BUILD_DIR)
 
-# Flash at application address
-flash_app: $(TARGET)
-	openocd -f interface/stlink.cfg -f target/stm32f7x.cfg -c "program $(TARGET) verify reset exit"
+# Flash Slot A for development/testing
+flash_slota: $(BIN_SLOTA)
+	openocd -f interface/stlink.cfg -f target/stm32f7x.cfg -c "program $(BIN_SLOTA) verify 0x08040000 reset exit"
 
-# Flash target (bootloader)
-flash: $(TARGET)
-	openocd -f interface/stlink.cfg -f target/stm32f7x.cfg -c "program $< verify reset exit"
+# Flash Slot B for development/testing
+flash_slotb: $(BIN_SLOTB)
+	openocd -f interface/stlink.cfg -f target/stm32f7x.cfg -c "program $(BIN_SLOTB) verify 0x08100000 reset exit"
 
-
-# Debug target
-debug: $(TARGET)
-	openocd -f interface/stlink.cfg -f target/stm32f7x.cfg & \
-	$(GDB) $< -ex "target remote :3333"
-
-.PHONY: all clean flash flash_app debug
+# Mark targets that are not files to prevent confusion if a file with that name exists
+.PHONY: all clean flash_slota flash_slotb
