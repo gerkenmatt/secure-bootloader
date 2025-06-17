@@ -133,23 +133,25 @@ async def ota_host_fixture(request): # 'request' is a built-in pytest fixture
 async def perform_ota_update(host: OTAHost, fw_data: bytes, sig_data: bytes, expect_success=True):
     """
     Performs the OTA update process by calling the host's high-level method.
-    This function now acts as a wrapper around `host.perform_full_ota` to integrate
-    with the existing test structure and handle the success/failure logic.
+    The host now intelligently handles waiting for success or failure logs,
+    making this wrapper function much simpler.
     """
     if host.verbose:
         print(CYAN + f"  TEST_OTA_LOGIC: Attempting OTA: FW Size={len(fw_data)}, Sig Size={len(sig_data)}, Expect Success={expect_success}" + RESET)
 
-    ota_result = await host.perform_full_ota(
+    # The call to perform_full_ota is now the same for both success and failure cases.
+    # The host class handles the different outcomes internally and returns a simple boolean.
+    ota_result_is_success = await host.perform_full_ota(
         fw_data=fw_data,
-        sig_data=sig_data,
-        initial_ota_command="update",
-        ota_mode_log="Entering OTA mode...",
-        post_ota_ready_log="Bootloader ready. Waiting for command",
-        reboot_timeout=25 
+        sig_data=sig_data
+        # Note: You can still override the default failure log here if a specific
+        # test needs to look for a different error message, for example:
+        # post_ota_failure_log="Invalid header length"
     )
 
+    # The logic now simply checks if the result matches the expectation.
     if expect_success:
-        if ota_result:
+        if ota_result_is_success:
             if host.verbose:
                 print(GREEN + "  TEST_OTA_LOGIC: OTA sequence succeeded as expected." + RESET)
             return True
@@ -157,18 +159,18 @@ async def perform_ota_update(host: OTAHost, fw_data: bytes, sig_data: bytes, exp
             print(RED + "  TEST_OTA_LOGIC: OTA sequence FAILED but was expected to succeed." + RESET)
             return False
     else:  # Expecting failure
-        if not ota_result:
+        if not ota_result_is_success:
             if host.verbose:
                 print(GREEN + "  TEST_OTA_LOGIC: OTA sequence FAILED as expected." + RESET)
+            
             # After an expected failure, reboot the device to ensure it's in a clean state for the next test.
             print(YELLOW + "  TEST_OTA_LOGIC: Rebooting device to a clean state after expected failure..." + RESET)
-            await reboot_and_wait_for_ready(host)
+            if not await reboot_and_wait_for_ready(host):
+                 pytest.fail(RED + "Device failed to become ready after a controlled reboot post-failure." + RESET)
             return True # The test assertion passes because the OTA failed correctly.
         else:
             print(RED + "  TEST_OTA_LOGIC: OTA sequence SUCCEEDED but was expected to fail." + RESET)
-            return False # The test assertion fails because the OTA didn't fail as expected.
-
-
+            return False
 # --- Test Cases ---
 
 @pytest.mark.asyncio

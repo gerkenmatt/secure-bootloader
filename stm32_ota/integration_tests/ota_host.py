@@ -345,9 +345,10 @@ class OTAHost:
             return -1
 
     async def perform_full_ota(self, fw_data: bytes, sig_data: bytes,
-                               initial_ota_command: str = "ota",
+                               initial_ota_command: str = "update",
                                ota_mode_log: str = "Entering OTA mode...",
-                               post_ota_ready_log: str = "Bootloader ready. Waiting for command",
+                               post_ota_success_log: str = "Bootloader ready. Waiting for command",
+                               post_ota_failure_log: str | None = "Signature verification FAILED",
                                log_timeout: float = 10.0,
                                reboot_timeout: float = 20.0
                                ) -> bool:
@@ -355,54 +356,87 @@ class OTAHost:
             print(YELLOW + "Starting Full OTA Sequence..." + RESET)
         await self.clear_device_logs()
 
+        # --- This initial section remains the same ---
         active_slot = await self.get_active_slot()
         if active_slot not in [0, 1]:
             print(RED + "Could not determine active slot. Aborting OTA." + RESET)
             return False
 
-        # Determine target slot (the inactive one)
         target_slot = 1 if active_slot == 0 else 0
         if self.verbose:
             print(f"Active slot is {active_slot}. Targeting inactive slot {target_slot}.")
 
-        if self.verbose:
-            print(f"Entering OTA mode with '{initial_ota_command}'...")
         if not await self.send_text_command(initial_ota_command, expected_response_log=ota_mode_log, log_timeout=log_timeout):
-            print(RED + f"Failed to enter OTA mode (expected '{ota_mode_log}'). Aborting." + RESET) # Error
+            print(RED + f"Failed to enter OTA mode (expected '{ota_mode_log}'). Aborting." + RESET)
             return False
 
         if not await self.send_cmd(CMD_START):
-            print(RED + "CMD_START failed. Aborting OTA." + RESET) # Error
+            print(RED + "CMD_START failed. Aborting OTA." + RESET)
             return False
 
         fw_size = len(fw_data)
         fw_crc = crc32(fw_data)
         if not await self.send_header(fw_size, fw_crc):
-            print(RED + "Header send failed. Aborting OTA." + RESET) # Error
+            print(RED + "Header send failed. Aborting OTA." + RESET)
             return False
 
         if not await self.send_data_chunks(fw_data):
-            print(RED + "FW Data send failed. Aborting OTA." + RESET) # Error
+            print(RED + "FW Data send failed. Aborting OTA." + RESET)
             return False
 
         if not await self.send_sig_chunks(sig_data):
-            print(RED + "Sig Data send failed. Aborting OTA." + RESET) # Error
+            print(RED + "Sig Data send failed. Aborting OTA." + RESET)
             return False
-
+        
+        # --- NEW LOGIC FOR FINAL VERIFICATION ---
         if self.verbose:
             print("Sending CMD_END for final verification...")
         if not await self.send_cmd(CMD_END):
-            print(RED + "CMD_END failed. OTA not finalized." + RESET) # Error
+            print(RED + "CMD_END failed. OTA not finalized." + RESET)
             return False
         if self.verbose:
-            print(GREEN + "CMD_END ACKed by device." + RESET)
+            print(GREEN + "CMD_END ACKed by device. Waiting for final status log..." + RESET)
 
-        if self.verbose:
-            print(YELLOW + f"Waiting for reboot and '{post_ota_ready_log}' (>{reboot_timeout}s)..." + RESET)
-        if await self.wait_for_log_message(post_ota_ready_log, timeout=reboot_timeout, quiet_success=not self.verbose):
-            if self.verbose:
-                print(GREEN + "Full OTA Sequence Successful: Device ready post-OTA." + RESET)
-            return True
+        # Create tasks to wait for either a success or a failure log message.
+        success_task = asyncio.create_task(
+            self.wait_for_log_message(post_ota_success_log, timeout=reboot_timeout, quiet_success=True)
+        )
+        
+        tasks = [success_task]
+        failure_task = None
+        if post_ota_failure_log:
+            failure_task = asyncio.create_task(
+                self.wait_for_log_message(post_ota_failure_log, timeout=reboot_timeout, quiet_success=True)
+            )
+            tasks.append(failure_task)
+
+        # Wait for the first task to complete
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+        # Cancel any pending tasks to clean up
+        for task in pending:
+            task.cancel()
+
+        ota_successful = False
+        if not done:
+            # This case means the overall wait timed out
+            print(RED + f"Full OTA Failed: Neither success ('{post_ota_success_log}') nor failure ('{post_ota_failure_log}') log received within {reboot_timeout}s." + RESET)
         else:
-            print(RED + f"Full OTA Failed: Device not ready ('{post_ota_ready_log}') post-OTA." + RESET) # Error
-            return False
+            first_completed_task = done.pop()
+            # Check which task finished and if it was successful (i.e., didn't time out internally)
+            if first_completed_task == success_task and success_task.result():
+                if self.verbose:
+                    print(GREEN + "Full OTA Sequence Successful: Device ready post-OTA." + RESET)
+                ota_successful = True
+            elif failure_task and first_completed_task == failure_task and failure_task.result():
+                # The OTA failed, which is the correct outcome for the host to report.
+                # The test script will interpret this False return value.
+                if self.verbose:
+                    print(YELLOW + f"Full OTA sequence failed as expected. Failure log '{post_ota_failure_log}' received." + RESET)
+                ota_successful = False 
+            else:
+                # This case means a task finished, but its result was False (it timed out).
+                print(RED + f"Full OTA Failed: Timed out waiting for status logs within {reboot_timeout}s window." + RESET)
+                ota_successful = False
+
+        return ota_successful

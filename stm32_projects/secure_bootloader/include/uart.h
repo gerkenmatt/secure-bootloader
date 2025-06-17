@@ -2,6 +2,7 @@
 #define UART_H
 
 #include "stm32f7xx.h"
+#include <stdbool.h> 
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -29,11 +30,13 @@ void usart_init(void);
 void usart_putc(uint8_t ch);
 
 /**
- * Receives a single character via USART3
- * 
- * @return The character received
+ * @brief Tries to get a character from the UART receive buffer.
+ * This function is NON-BLOCKING.
+ *
+ * @param data Pointer to a byte where the received character will be stored.
+ * @return true if a character was successfully read, false if the buffer was empty.
  */
-uint8_t usart_getc(void);
+bool usart_getc(uint8_t* data);
 
 /**
  * Sends a string via USART3
@@ -41,14 +44,6 @@ uint8_t usart_getc(void);
  * @param str The string to send
  */
 void usart_puts(const char *str);
-
-/**
- * Receives a string via USART3
- * 
- * @param buffer The buffer to store the received string
- * @param max_len The maximum length of the string to receive
- */
-void usart_gets(char *buffer, uint32_t max_len);
 
 /**
  * Prints a 32-bit unsigned integer in hexadecimal format

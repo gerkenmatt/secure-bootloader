@@ -69,40 +69,7 @@ typedef struct {
 // Function Prototypes
 // -----------------------------------------------------------------------------
 
-/**
- * @brief Main OTA update handler function that processes incoming OTA packets.
- * 
- * Runs in an infinite loop waiting for and handling OTA frames.
- * Frame types supported:
- * - PACKET_CMD: Control commands like start/end update
- * - PACKET_HEADER: Contains firmware metadata
- * - PACKET_DATA: Contains firmware binary data
- * @return true if OTA session completed successfully, false if interrupted
- */
-bool handle_ota_session(void);
 
-/**
- * @brief Receives and validates an OTA frame from UART.
- * 
- * Frame format:
- * [SOF][TYPE][LEN_LO][LEN_HI][DATA...][CRC0-3][EOF]
- *
- * @param frame Pointer to frame structure to populate
- * @return true if frame received and validated successfully, false otherwise
- */
-bool ota_receive_frame(ota_frame_t* frame);
-
-/**
- * @brief Handles OTA command frames received during firmware update.
- * 
- * Commands supported:
- * - CMD_START: Prepares flash for firmware update by erasing sectors
- * - CMD_END: Completes update, locks flash and reboots system
- *
- * @param frame Pointer to received OTA frame containing command
- * @return true if command handled successfully, false if session should end
- */
-bool handle_ota_command(const ota_frame_t* frame);
 
 /**
  * @brief Sends a response packet back to the host.
@@ -113,6 +80,26 @@ bool handle_ota_command(const ota_frame_t* frame);
  */
 void ota_send_response(uint8_t status);
 
+/**
+ * @brief Processes the OTA data stream in a non-blocking manner.
+ * This is the main engine for the OTA module during an update.
+ */
+void ota_process_non_blocking(void);
+
+/**
+ * @brief Resets the OTA session timeout timer.
+ * Should be called when an OTA session begins.
+ */
+void ota_reset_timeout(void);
+
+/**
+ * @brief Performs the final verification of the downloaded firmware.
+ * This includes checking the signature and, upon success, updating
+ * the bootloader configuration to make the new slot active.
+ *
+ * @return true if verification is successful and config is written, false otherwise.
+ */
+bool ota_finalize_and_verify(void);
 
 
 

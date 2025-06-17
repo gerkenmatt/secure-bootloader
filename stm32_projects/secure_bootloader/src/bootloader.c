@@ -9,8 +9,18 @@
 #include "flash.h"
 #include "mbedtls/platform.h"
 
+// --- Type Definitions ---
+// Define a function pointer type for our command executors.
+// This makes the code cleaner and easier to read.
+typedef void (*command_executor_t)(const char* cmd);
+
 // --- Static State ---
 static bootloader_state_t current_state = BL_STATE_IDLE;
+static volatile uint32_t systick_ms_counter = 0;
+
+// --- Function Prototypes for Command Executors ---
+static void execute_full_command_set(const char* cmd);
+static void execute_recovery_command_set(const char* cmd);
 
 // --- Function Prototypes ---
 static void bootloader_jump_to(uint32_t app_address);
@@ -18,6 +28,8 @@ static void handle_erase_command(const char* cmd_arg);
 static void handle_print_command(const char* cmd_arg); 
 static void handle_bootloader_info(void);
 static void handle_activate_command(const char* cmd_arg);
+
+static void handle_command_input(command_executor_t execute_func);
 
 // --- Public Functions ---
 
@@ -83,57 +95,96 @@ void init_bootloader_config(void)
     }
 }
 
-void process_bootloader_command(void)  
+void bootloader_run_state_machine(void)
 {
-    if (!(USART6->ISR & USART_ISR_RXNE))
-        return;
+    switch (current_state)
+    {
+        case BL_STATE_READY:
+            // In the READY state, handle input using the full command set.
+            handle_command_input(execute_full_command_set);
+            break;
 
-    char cmd_buf[16] = {0};
-    usart_gets(cmd_buf, sizeof(cmd_buf));       // TODO: Ensure usart_gets is buffer-safe
+        case BL_STATE_RECEIVING:
+            ota_process_non_blocking();
+            break;
 
-    if (strcmp(cmd_buf, "run") == 0 || strcmp(cmd_buf, "r") == 0)
+        case BL_STATE_VERIFY:
+            log("Verifying received firmware...\r\n");
+            if (ota_finalize_and_verify()) 
+            {
+                log("Verification successful. Rebooting to new firmware.\r\n");
+                NVIC_SystemReset();
+            } 
+            else 
+            {
+                log("Verification FAILED. Entering error state.\r\n");
+                bootloader_set_state(BL_STATE_ERROR);
+            }
+            break;
+            break;
+
+        case BL_STATE_ERROR:
+        {
+            // In the ERROR state, handle input using the limited recovery command set.
+            static bool error_indicated = false;
+            if (!error_indicated) 
+            {
+                GPIOB->ODR |= (1UL << 14); // Set red LED
+                log("\r\n!!! An error occurred. Entering recovery mode. Type 'help'. !!!\r\n");
+                error_indicated = true;
+            }
+            handle_command_input(execute_recovery_command_set);
+            break;
+        }
+
+        default:
+            // Do nothing
+            break;
+    }
+}
+
+/**
+ * @brief This function processes the actual commands once a full line is received.
+ * NOTE: We have separated the receiving logic from the processing logic.
+ * * @param cmd The null-terminated command string to process.
+ */
+static void execute_full_command_set(const char* cmd)
+{
+    if (strcmp(cmd, "run") == 0 || strcmp(cmd, "r") == 0)
     {
         log("'run' command received. Attempting to boot active application...\r\n");
         bootloader_jump_to_active_application();
     }
-    else if (strcmp(cmd_buf, "update") == 0)
+    else if (strcmp(cmd, "update") == 0)
     {
-        usart_puts("Entering OTA mode...\r\n");
+        log("Entering OTA mode...\r\n");
+        ota_reset_timeout(); // Start the OTA timeout timer
         bootloader_set_state(BL_STATE_RECEIVING);
-        handle_ota_session();
-        bootloader_set_state(BL_STATE_READY);
     }
-    else if (strcmp(cmd_buf, "reboot") == 0)
+    else if (strcmp(cmd, "reboot") == 0)
     {
         usart_puts("Rebooting...\r\n");
         SCB_CleanDCache();          // TODO: is this needed?
         NVIC_SystemReset();
     }
-    else if (strcmp(cmd_buf, "info") == 0) 
+    else if (strcmp(cmd, "info") == 0) 
     {
         handle_bootloader_info();
     }
-    else if (strncmp(cmd_buf, "erase ", 6) == 0) 
+    else if (strncmp(cmd, "erase ", 6) == 0) 
     {
         // Handle "erase <slot_num>"
-        handle_erase_command(cmd_buf + 6);
+        handle_erase_command(cmd + 6);
     }
-    else if (strncmp(cmd_buf, "p ", 2) == 0) {
+    else if (strncmp(cmd, "p ", 2) == 0) {
         // Handle "p <slot_num>"
-        handle_print_command(cmd_buf + 2);
-        // volatile uint32_t* flash_addr = (volatile uint32_t*)APPLICATION_START_ADDR;
-        // usart_puts("First 10 words at APPLICATION_START_ADDR:\r\n");
-        // for (int i = 0; i < 10; i++)  // Read 10 32-bit words
-        // {
-        //     print_uint32_hex(flash_addr[i]);
-        //     usart_puts(" ");
-        // }
+        handle_print_command(cmd + 2);
     }
-    else if (strncmp(cmd_buf, "activate ", 9) == 0) 
+    else if (strncmp(cmd, "activate ", 9) == 0) 
     {
-        handle_activate_command(cmd_buf + 9);
+        handle_activate_command(cmd + 9);
     }
-    else if (strcmp(cmd_buf, "help") == 0 || strcmp(cmd_buf, "h") == 0)
+    else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0)
     {
         usart_puts("Available commands:\r\n");
         usart_puts("  run  - Jump to application\r\n");
@@ -144,7 +195,7 @@ void process_bootloader_command(void)
         usart_puts("  help - Show this message\r\n");
         usart_puts("  reboot - Reboot the device\r\n");
     }
-    else if (strcmp(cmd_buf, "status") == 0)
+    else if (strcmp(cmd, "status") == 0)
     {
         const bootloader_config_t* cfg = read_boot_config();
         usart_puts("Active slot: ");
@@ -154,6 +205,84 @@ void process_bootloader_command(void)
     else
     {
         usart_puts("Unknown command.\r\n");
+    }
+}
+
+/**
+ * @brief Processes a limited, safe set of commands for recovery mode.
+ */
+static void execute_recovery_command_set(const char* cmd)
+{
+    if (strcmp(cmd, "reboot") == 0) 
+    {
+        log("Rebooting from error state...\r\n");
+        NVIC_SystemReset();
+    } 
+    else if (strcmp(cmd, "info") == 0 || strcmp(cmd, "status") == 0) 
+    {
+        log("--- Recovery Mode Status ---\r\n");
+        handle_bootloader_info();
+    } 
+    else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0) 
+    {
+        usart_puts("--- Recovery Mode Commands ---\r\n");
+        usart_puts("  reboot   - Restart the device\r\n");
+        usart_puts("  info     - Show bootloader status\r\n");
+        usart_puts("  help     - Show this message\r\n");
+    } 
+    else 
+    {
+        usart_puts("Unknown or disallowed command. Allowed: 'reboot', 'info', 'help'.\r\n");
+    }
+}
+
+/**
+ * @brief Handles incoming characters from UART to build a command string.
+ * This function is NON-BLOCKING and should be called repeatedly.
+ */
+static void handle_command_input(command_executor_t execute_func)
+{
+    // Static variables to preserve state across calls
+    static char command_buffer[64];
+    static uint32_t buffer_index = 0;
+
+    uint8_t byte;
+
+    // Check if a character is available from the ring buffer
+    if (usart_getc(&byte)) 
+    {
+        
+        // --- Handle special characters ---
+        if (byte == '\r' || byte == '\n') 
+        { 
+            // End of command (Enter key)
+            usart_puts("\r\n"); // Echo newline for user
+            
+            if (buffer_index > 0) 
+            {
+                command_buffer[buffer_index] = '\0'; // Null-terminate the string
+                execute_func(command_buffer); // Call the provided executor
+            }
+            buffer_index = 0; // Reset for the next command
+        }
+        else if (byte == 127 || byte == '\b') 
+        { 
+            // Backspace
+            if (buffer_index > 0) 
+            {
+                buffer_index--;
+                usart_puts("\b \b"); // Erase character on terminal
+            }
+        }
+        // --- Handle printable characters ---
+        else if (byte >= ' ' && byte <= '~') 
+        {
+            if (buffer_index < (sizeof(command_buffer) - 1)) 
+            {
+                command_buffer[buffer_index++] = byte;
+                usart_putc(byte); // Echo character back to the user
+            }
+        }
     }
 }
 
@@ -279,11 +408,6 @@ bootloader_status_t bootloader_verify_memory_aliasing(void)
     return BL_OK;
 }
 
-// uint32_t bootloader_get_boot_mode(void)
-// {
-//     return (GPIOC->IDR & GPIO_IDR_ID13) ? 1 : 0;
-// }
-
 
 void validate_boot_environment(void)
 {
@@ -316,8 +440,6 @@ bool write_boot_config(const bootloader_config_t* new_config)
     clear_flash_errors();
     unlock_flash();
 
-    // SCB_DisableDCache();
-
     // Configure flash access control and program size
     FLASH->ACR |= (1 << 8) | (1 << 9); // Enable instruction and data cache
     FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
@@ -340,7 +462,6 @@ bool write_boot_config(const bootloader_config_t* new_config)
         lock_flash();
         return false;
     }
-    // SCB_EnableDCache();
 
     lock_flash();
 
@@ -497,4 +618,22 @@ static void handle_activate_command(const char* cmd_arg)
     {
         log("Active slot switched to: "); print_uint32_hex(slot_to_activate); log("\r\n");
     }
+}
+
+
+/**
+ * @brief The SysTick interrupt handler, called automatically every 1ms.
+ */
+void SysTick_Handler(void) 
+{
+    systick_ms_counter++;
+}
+
+/**
+ * @brief Provides the current millisecond count since startup.
+ * @return The current value of the SysTick millisecond counter.
+ */
+uint32_t get_systick(void) 
+{
+    return systick_ms_counter;
 }

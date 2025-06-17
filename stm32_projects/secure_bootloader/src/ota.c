@@ -1,22 +1,31 @@
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
 #include "ota.h"
-#include "stm32f7xx.h"
-#include "uart.h"
-#include "utilities.h"
-#include "flash.h"
-#include "bootloader.h"
-
-// mbed TLS Headers
-#include "mbedtls/platform.h" // If using mbedtls_platform_set_calloc_free
+#include "bootloader.h" // Needed for bootloader_set_state and config structs
+#include "uart.h"       // For logging and comms
+#include "utilities.h"  // For crc32, etc.
+#include "flash.h"      // For writing new config
+#include "string.h"     // For memcpy
+#include "mbedtls/platform.h"
 #include "mbedtls/sha256.h"
 #include "mbedtls/pk.h"
-#include "mbedtls/md.h"       // For MBEDTLS_MD_SHA256 enum
+#include "mbedtls/md.h"
 #include "mbedtls/error.h"
 
 #define CHUNK_SIZE 256
 #define PUBKEY_DER_LEN 91
+
+typedef enum {
+    OTA_PARSE_STATE_WAIT_SOF,
+    OTA_PARSE_STATE_GET_TYPE,
+    OTA_PARSE_STATE_GET_LEN_LO,
+    OTA_PARSE_STATE_GET_LEN_HI,
+    OTA_PARSE_STATE_GET_DATA,
+    OTA_PARSE_STATE_GET_CRC,
+    OTA_PARSE_STATE_WAIT_EOF
+} ota_parse_state_t;
+
+// --- Timeout Management Data (at top of file) ---
+#define OTA_TIMEOUT_MS 5000 // 5 seconds
+static uint32_t ota_last_byte_timestamp = 0;
 
 // --- OTA Session State ---
 // This struct holds the context for the current OTA session.
@@ -46,34 +55,29 @@ static const unsigned char pubkey_der[] = {
 
 // --- Static Function Prototypes ---
 
-static bool process_cmd_start(void);
-static bool process_cmd_end(void);
+static bool verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t *sig, uint16_t sig_len);
+static void handle_ota_command(const ota_frame_t* frame);
 static void handle_ota_header(const ota_frame_t* frame);
 static void handle_ota_data(const ota_frame_t* frame);
 static void handle_ota_signature(const ota_frame_t* frame);
-static bool verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t *sig, uint16_t sig_len);
+static bool ota_receive_frame(ota_frame_t* frame);
+static void ota_check_timeout(void);
+static bool process_cmd_start(void); 
 
 // --- Public Functions ---
 
-bool handle_ota_session(void) {
-    log("Waiting for OTA packets...\r\n");
+void ota_process_non_blocking(void) 
+{
+    ota_frame_t frame;
 
-    while (1) {
-
-        ota_frame_t frame;
-        if (!ota_receive_frame(&frame)) {
-            log("Invalid frame received.\r\n");
-            continue; 
-        }
-
-        // Process a valid frame based on its type
-        switch (frame.type) {
+    if (ota_receive_frame(&frame)) 
+    {
+        // Process the single, valid frame that was just received
+        switch (frame.type) 
+        {
             case PACKET_CMD:
-                if (!handle_ota_command(&frame)) {
-                    // This indicates a command was received that should terminate the session (e.g., failed CMD_END)
-                    log("Exiting OTA session due to command handler result.\r\n");
-                    return false;
-                }
+                // If the command is CMD_END, it will trigger the state transition
+                handle_ota_command(&frame); 
                 break;
             case PACKET_HEADER:  handle_ota_header(&frame);      break;
             case PACKET_DATA:    handle_ota_data(&frame);        break;
@@ -84,88 +88,190 @@ bool handle_ota_session(void) {
                 break;
         }
     }
-    return true;
+    
+    ota_check_timeout(); // Check for session timeout
 }
 
 // --- Frame Reception and Command Handling ---
 
-bool ota_receive_frame(ota_frame_t* frame) {
+/**
+ * @brief Attempts to receive a complete OTA frame in a non-blocking manner.
+ * This function is a state machine that processes one byte at a time from the UART buffer.
+ *
+ * @param frame Pointer to an ota_frame_t struct that will be filled if a frame is complete.
+ * @return true if a complete, valid frame was received, false otherwise.
+ */
+bool ota_receive_frame(ota_frame_t* frame) 
+{
+    // --- Static variables to hold the state between calls ---
+    static ota_parse_state_t parser_state = OTA_PARSE_STATE_WAIT_SOF;
+    static ota_frame_t internal_frame; // We build the frame internally first
+    static uint16_t data_index = 0;
+    static uint8_t crc_buffer[4];
+    static uint8_t crc_index = 0;
+    
+    uint8_t byte;
 
-    // Validate input parameter
-    if (!frame) {
-        log("Frame pointer is NULL\r\n");
-        return false;
+    // Process all bytes currently in the ring buffer
+    while (usart_getc(&byte)) 
+    {
+        ota_reset_timeout(); // A byte was received, reset the timeout
+
+        switch (parser_state) 
+        {
+            case OTA_PARSE_STATE_WAIT_SOF:
+                if (byte == OTA_SOF) 
+                {
+                    parser_state = OTA_PARSE_STATE_GET_TYPE;
+                }
+                break;
+
+            case OTA_PARSE_STATE_GET_TYPE:
+                internal_frame.type = byte;
+                parser_state = OTA_PARSE_STATE_GET_LEN_LO;
+                break;
+
+            case OTA_PARSE_STATE_GET_LEN_LO:
+                internal_frame.length = byte;
+                parser_state = OTA_PARSE_STATE_GET_LEN_HI;
+                break;
+
+            case OTA_PARSE_STATE_GET_LEN_HI:
+                internal_frame.length |= ((uint16_t)byte << 8);
+                if (internal_frame.length > OTA_MAX_DATA) 
+                {
+                    parser_state = OTA_PARSE_STATE_WAIT_SOF; // Reset on error
+                } 
+                else 
+                {
+                    data_index = 0;
+                    parser_state = (internal_frame.length > 0) ? OTA_PARSE_STATE_GET_DATA : OTA_PARSE_STATE_GET_CRC;
+                }
+                break;
+
+            case OTA_PARSE_STATE_GET_DATA:
+                internal_frame.data[data_index++] = byte;
+                if (data_index >= internal_frame.length) 
+                {
+                    crc_index = 0;
+                    parser_state = OTA_PARSE_STATE_GET_CRC;
+                }
+                break;
+
+            case OTA_PARSE_STATE_GET_CRC:
+                crc_buffer[crc_index++] = byte;
+                if (crc_index >= 4) 
+                {
+                    internal_frame.crc = extract_crc(crc_buffer);
+                    parser_state = OTA_PARSE_STATE_WAIT_EOF;
+                }
+                break;
+            
+            case OTA_PARSE_STATE_WAIT_EOF:
+            {
+                bool success = false;
+                if (byte == OTA_EOF) 
+                {
+                    uint32_t calc_crc = crc32(internal_frame.data, internal_frame.length);
+                    if (calc_crc == internal_frame.crc) 
+                    {
+                        // SUCCESS! Frame is complete and valid.
+                        // Copy the internal frame to the user's provided pointer.
+                        memcpy(frame, &internal_frame, sizeof(ota_frame_t));
+                        success = true;
+                    }
+                }
+                // Always reset the state machine for the next frame
+                parser_state = OTA_PARSE_STATE_WAIT_SOF;
+                
+                if (success) 
+                {
+                    // Return true only on this specific path
+                    return true; 
+                }
+                break;
+            }
+        }
     }
-
-    // Wait for start of frame marker
-    //TODO: add timeout
-    uint8_t byte = 0;
-    while (byte != OTA_SOF){
-        byte = usart_getc();
-    }
-
-    // Read frame type and length
-    frame->type = usart_getc();
-    uint8_t len_lo = usart_getc();
-    uint8_t len_hi = usart_getc();
-    frame->length = (uint16_t)((len_hi << 8) | len_lo);
-
-    // Validate frame length
-    if (frame->length > OTA_MAX_DATA) {
-        log("Frame too large\r\n");
-        return false;
-    }
-
-    // Read frame payload data
-    for (uint16_t i = 0; i < frame->length; i++) {
-        frame->data[i] = usart_getc();
-    }
-
-    // Read and extract 32-bit CRC
-    uint8_t crc_bytes[4];
-    for (int i = 0; i < 4; i++) crc_bytes[i] = usart_getc();
-    frame->crc = extract_crc(crc_bytes);
-
-    // Verify end of frame marker
-    if (usart_getc() != OTA_EOF) {
-        log("Invalid EOF\r\n");
-        return false;
-    }
-
-    // Validate CRC
-    uint32_t calc_crc = crc32(frame->data, frame->length);
-    if (calc_crc != frame->crc) {
-        log("CRC mismatch: calc=0x"); print_uint32_hex(calc_crc);
-        log(" frame=0x"); print_uint32_hex(frame->crc); log("\r\n");
-        return false;
-    }
-
-    return true;
+    
+    // If we reach here, it means we ran out of bytes to process
+    // and a full frame has not yet been completed.
+    return false;
 }
 
-bool handle_ota_command(const ota_frame_t* frame) 
+void handle_ota_command(const ota_frame_t* frame) 
 {
     // Validate frame has at least 1 byte for command
     if (frame->length < 1) 
     {
         log("Command packet has no payload\r\n");
         ota_send_response(RESP_NACK);
-        return true; // Stay in OTA session
+        return; 
     }
 
     switch (frame->data[0]) 
     {
         case CMD_START:
-            return process_cmd_start();
+            process_cmd_start();
+            break;
         case CMD_END:
-            return process_cmd_end();
+            log("CMD_END received. Proceeding to verification.\r\n");
+            ota_send_response(RESP_ACK);
+            bootloader_set_state(BL_STATE_VERIFY);
+            break;
         default:
             // Unknown command received
             ota_send_response(RESP_NACK);
             log("Unknown CMD: "); print_uint32_hex(frame->data[0]); log("\r\n");
             break;
     }
-    return true;
+}
+
+bool ota_finalize_and_verify(void) 
+{
+     log("Finalizing update...\r\n");
+
+     uint32_t inactive_slot_addr = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
+
+     // 1. Verify the signature of the newly downloaded firmware
+     log("Verifying signature...\r\n");
+     if (!verify_signature(
+         (uint8_t*)inactive_slot_addr, 
+         ota_session.header.fw_size, 
+         ota_session.signature, 
+         ota_session.signature_length))
+     {
+         log("Signature verification FAILED. Aborting update.\r\n");
+         ota_send_response(RESP_NACK);
+         return false;
+     }
+     log("Signature verified\r\n");
+
+     // 2. Prepare the new configuration with the atomic swap
+     bootloader_config_t new_cfg;
+     memcpy(&new_cfg, read_boot_config(), sizeof(bootloader_config_t)); // Make a mutable copy
+
+     // Update metadata for the new firmware slot
+     new_cfg.slot[ota_session.inactive_slot_index].fw_size = ota_session.header.fw_size;
+     new_cfg.slot[ota_session.inactive_slot_index].fw_crc = ota_session.header.fw_crc;
+     new_cfg.slot[ota_session.inactive_slot_index].is_valid = 1;
+     new_cfg.slot[ota_session.inactive_slot_index].boot_attempts_remaining = BOOT_ATTEMPT_COUNT;
+
+     // Perform the atomic swap by changing the active slot index
+     new_cfg.active_slot = ota_session.inactive_slot_index;
+
+     // 3. Write the new configuration back to flash
+     log("Writing boot config to activate slot\r\n");
+     if (!write_boot_config(&new_cfg)) 
+     {
+         ota_send_response(RESP_NACK);
+         log("Failed to write boot config\r\n");
+         return false; 
+     }
+     log("Boot config written\r\n");
+     ota_send_response(RESP_ACK);
+
+     return true; // Success
 }
 
 // --- Static Helper Functions ---
@@ -203,18 +309,6 @@ static bool process_cmd_start(void)
     FLASH->ACR |= (1 << 8) | (1 << 9);  // Enable instruction and data cache
     FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
 
-    // uint32_t errs = FLASH->SR;
-    // // Erase the config sector
-    // // program_flash_word(SLOTA_ADDR, 0xbeefb00b);
-    // // log("slota first word: "); print_uint32_hex(*(volatile uint32_t*)SLOTA_ADDR); log("\r\n");
-    // if (!erase_flash_sectors(CONFIG_SECTOR, CONFIG_SECTOR, CONFIG_ADDR, 0x40000)) 
-    // {
-    //     log("Failed to eraseb config sector!\r\n");
-    //     log("Flash errors before: "); print_uint32_hex(errs); log("\r\n");
-    //     lock_flash(); // Always re-lock flash
-    //     return false;
-    // }
-
     // Erase inactive slot sectors
     if (!erase_flash_sectors(
         inactive_slot_sector, 
@@ -224,73 +318,79 @@ static bool process_cmd_start(void)
     {
         ota_send_response(RESP_NACK);
         log("Flash erase failed\r\n");
-        return true;
+        bootloader_set_state(BL_STATE_ERROR);
+        return false;
     }
     // Erase successful, send ACK
     ota_send_response(RESP_ACK);
+    lock_flash();
     return true;
 }
 
-/**
- * @brief Processes the CMD_END command to finalize the OTA update.
- * 
- * Verifies the firmware signature, updates bootloader configuration,
- * locks the flash memory, and reboots the system.
- *
- * @return true if successful, false if signature verification failed
- */
-static bool process_cmd_end(void) {
-    log("CMD_END received. Finalizing update...\r\n");
+// /**
+//  * @brief Processes the CMD_END command to finalize the OTA update.
+//  * 
+//  * Verifies the firmware signature, updates bootloader configuration,
+//  * locks the flash memory, and reboots the system.
+//  *
+//  * @return true if successful, false if signature verification failed
+//  */
+// static bool process_cmd_end(void) 
+// {
+//     log("CMD_END received. Finalizing update...\r\n");
 
-    uint32_t inactive_slot_addr = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
+//     uint32_t inactive_slot_addr = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
 
-    // 1. Verify the signature of the newly downloaded firmware
-    log("Verifying signature...\r\n");
-    if (!verify_signature(
-        (uint8_t*)inactive_slot_addr, 
-        ota_session.header.fw_size, 
-        ota_session.signature, 
-        ota_session.signature_length))
-    {
-        log("Signature verification FAILED. Aborting update.\r\n");
-        ota_send_response(RESP_NACK);
-        return false;
-    }
-    log("Signature verified\r\n");
-    lock_flash(); // for debugging
+//     // 1. Verify the signature of the newly downloaded firmware
+//     log("Verifying signature...\r\n");
+//     if (!verify_signature(
+//         (uint8_t*)inactive_slot_addr, 
+//         ota_session.header.fw_size, 
+//         ota_session.signature, 
+//         ota_session.signature_length))
+//     {
+//         log("Signature verification FAILED. Aborting update.\r\n");
+//         ota_send_response(RESP_NACK);
+//         return false;
+//     }
+//     log("Signature verified\r\n");
+//     lock_flash(); // for debugging
 
-    // 2. Prepare the new configuration with the atomic swap
-    bootloader_config_t new_cfg;
-    memcpy(&new_cfg, read_boot_config(), sizeof(bootloader_config_t)); // Make a mutable copy
+//     // 2. Prepare the new configuration with the atomic swap
+//     bootloader_config_t new_cfg;
+//     memcpy(&new_cfg, read_boot_config(), sizeof(bootloader_config_t)); // Make a mutable copy
 
-    // Update metadata for the new firmware slot
-    new_cfg.slot[ota_session.inactive_slot_index].fw_size = ota_session.header.fw_size;
-    new_cfg.slot[ota_session.inactive_slot_index].fw_crc = ota_session.header.fw_crc;
-    new_cfg.slot[ota_session.inactive_slot_index].is_valid = 1;
-    new_cfg.slot[ota_session.inactive_slot_index].boot_attempts_remaining = BOOT_ATTEMPT_COUNT;
+//     // Update metadata for the new firmware slot
+//     new_cfg.slot[ota_session.inactive_slot_index].fw_size = ota_session.header.fw_size;
+//     new_cfg.slot[ota_session.inactive_slot_index].fw_crc = ota_session.header.fw_crc;
+//     new_cfg.slot[ota_session.inactive_slot_index].is_valid = 1;
+//     new_cfg.slot[ota_session.inactive_slot_index].boot_attempts_remaining = BOOT_ATTEMPT_COUNT;
 
-    // Perform the atomic swap by changing the active slot index
-    new_cfg.active_slot = ota_session.inactive_slot_index;
+//     // Perform the atomic swap by changing the active slot index
+//     new_cfg.active_slot = ota_session.inactive_slot_index;
 
-    // 3. Write the new configuration back to flash
-    log("Writing boot config to activate slot\r\n");
-    if (!write_boot_config(&new_cfg)) 
-    {
-        ota_send_response(RESP_NACK);
-        log("Failed to write boot config\r\n");
-        return false; // Terminate OTA session, something is wrong with flash config
-    }
-    log("Boot config written\r\n");
-    ota_send_response(RESP_ACK);
+//     // 3. Write the new configuration back to flash
+//     log("Writing boot config to activate slot\r\n");
+//     if (!write_boot_config(&new_cfg)) 
+//     {
+//         ota_send_response(RESP_NACK);
+//         log("Failed to write boot config\r\n");
+//         return false; // Terminate OTA session, something is wrong with flash config
+//     }
+//     log("Boot config written\r\n");
+//     ota_send_response(RESP_ACK);
 
-    // OTA update complete, lock flash and reboot
-    FLASH->CR |= FLASH_CR_LOCK;
-    log("Flash locked\r\nRebooting...\r\n");
-    SCB_CleanDCache();        // Clean data cache ----- TODO: is this needed? 
-    NVIC_SystemReset();       // Reset system
+//     bootloader_set_state(BL_STATE_VERIFY); // Let the main loop handle the next step
+//     return true; // Exit the OTA handler successfully
 
-    return false; // Code should not reach here
-}
+//     // // OTA update complete, lock flash and reboot
+//     // FLASH->CR |= FLASH_CR_LOCK;
+//     // log("Flash locked\r\nRebooting...\r\n");
+//     // SCB_CleanDCache();        // Clean data cache ----- TODO: is this needed? 
+//     // NVIC_SystemReset();       // Reset system
+
+//     // return false; // Code should not reach here
+// }
 
 /**
  * @brief Handles incoming OTA header packet containing firmware metadata.
@@ -299,9 +399,11 @@ static bool process_cmd_end(void) {
  *
  * @param frame Pointer to received OTA frame
  */
-static void handle_ota_header(const ota_frame_t* frame) {
+static void handle_ota_header(const ota_frame_t* frame) 
+{
     // Verify header length matches expected size
-    if (frame->length != sizeof(ota_header_info_t)) {
+    if (frame->length != sizeof(ota_header_info_t)) 
+    {
         ota_send_response(RESP_NACK);
         log("Invalid header length\r\n");
         return;
@@ -311,9 +413,11 @@ static void handle_ota_header(const ota_frame_t* frame) {
     memcpy(&ota_session.header, frame->data, sizeof(ota_header_info_t));
 
     // Sanity check firmware size against slot size
-    if (ota_session.header.fw_size > SLOT_SIZE) {
+    if (ota_session.header.fw_size > SLOT_SIZE) 
+    {
         log("Firmware size exceeds slot size\r\n");
         ota_send_response(RESP_NACK);
+        bootloader_set_state(BL_STATE_ERROR);
         return;
     }
 
@@ -328,24 +432,31 @@ static void handle_ota_header(const ota_frame_t* frame) {
  *
  * @param frame Pointer to received OTA frame
  */
-static void handle_ota_data(const ota_frame_t* frame) {
+static void handle_ota_data(const ota_frame_t* frame) 
+{
     // Validate data length is within bounds
-    if (frame->length == 0 || frame->length > OTA_MAX_DATA) {
+    if (frame->length == 0 || frame->length > OTA_MAX_DATA) 
+    {
         ota_send_response(RESP_NACK);
         log("Invalid data length\r\n");
         return;
     }
 
+    unlock_flash();
     // Write data chunk to the correct address in the inactive slot
-    if (!program_flash(ota_session.flash_write_address, (uint32_t*)frame->data, frame->length)) {
+    if (!program_flash(ota_session.flash_write_address, (uint32_t*)frame->data, frame->length)) 
+    {
         ota_send_response(RESP_NACK);
         log("Flash write failed at address: "); print_uint32_hex(ota_session.flash_write_address); log("\r\n");
-        return;
+        bootloader_set_state(BL_STATE_ERROR);
     }
-
-    // Update write address for the next chunk
-    ota_session.flash_write_address += frame->length;
-    ota_send_response(RESP_ACK);
+    else
+    {
+        // Update write address for the next chunk
+        ota_session.flash_write_address += frame->length;
+        ota_send_response(RESP_ACK);
+    }
+    lock_flash();
 }
 
 /**
@@ -355,9 +466,11 @@ static void handle_ota_data(const ota_frame_t* frame) {
  *
  * @param frame Pointer to received OTA frame
  */
-static void handle_ota_signature(const ota_frame_t* frame) {
+static void handle_ota_signature(const ota_frame_t* frame) 
+{
     // sanity check
-    if (frame->length > SIG_MAX_LEN) {
+    if (frame->length > SIG_MAX_LEN) 
+    {
         ota_send_response(RESP_NACK);
         log("Signature too large\r\n");
         return;
@@ -377,74 +490,38 @@ static void handle_ota_signature(const ota_frame_t* frame) {
  * @param sig_len Length of the signature data
  * @return true if signature is valid, false otherwise
  */
-static bool verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t *sig, uint16_t sig_len)
+static bool verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t *sig, uint16_t sig_len) 
 {
     int ret;
-    uint8_t hash[32]; // SHA-256 output is 32 bytes
+    uint8_t hash[32];
     mbedtls_pk_context pk_ctx;
     mbedtls_sha256_context sha_ctx;
 
-    // --- 1. Hash the firmware image ---
-    log("Hashing firmware image (0x"); print_uint32_hex(data_len); log(" bytes)...\r\n");
     mbedtls_sha256_init(&sha_ctx);
-
-    ret = mbedtls_sha256_starts(&sha_ctx, 0); // 0 for SHA-256
-    if (ret != 0) {
-        log("SHA256 starts failed\r\n");
-        mbedtls_sha256_free(&sha_ctx);
-        return false;
-    }
-
-    ret = mbedtls_sha256_update(&sha_ctx, data, data_len);
-    if (ret != 0) {
-        log("SHA256 update failed/r/n");
-        mbedtls_sha256_free(&sha_ctx);
-        return false;
-    }
-
-    ret = mbedtls_sha256_finish(&sha_ctx, hash);
-    if (ret != 0) {
-        log("SHA256 finish failed\r\n"); 
+    if (mbedtls_sha256_starts(&sha_ctx, 0) != 0 ||
+        mbedtls_sha256_update(&sha_ctx, data, data_len) != 0 ||
+        mbedtls_sha256_finish(&sha_ctx, hash) != 0) 
+    {
         mbedtls_sha256_free(&sha_ctx);
         return false;
     }
     mbedtls_sha256_free(&sha_ctx);
-    log("Firmware hashing complete.\r\n");
 
-    // --- 2. Initialize and parse the public key ---
-    log("Parsing public key...\r\n");
     mbedtls_pk_init(&pk_ctx);
-    ret = mbedtls_pk_parse_public_key(&pk_ctx, pubkey_der, PUBKEY_DER_LEN);
-    if (ret != 0) {
-        log("PK parse public key failed\r\n");
+    if (mbedtls_pk_parse_public_key(&pk_ctx, pubkey_der, PUBKEY_DER_LEN) != 0) 
+    {
         mbedtls_pk_free(&pk_ctx);
         return false;
     }
 
-    if (!mbedtls_pk_can_do(&pk_ctx, MBEDTLS_PK_ECKEY)) { // Ensure MBEDTLS_PK_ECKEY is known from your mbedTLS config
-        log("Error: Parsed key is not an EC key.\r\n");
-        mbedtls_pk_free(&pk_ctx);
-        return false;
-    }
-    log("Public key parsed successfully.\r\n");
-
-    // --- 3. Verify the signature ---
-    log("Verifying signature against hash (signature len: 0x"); print_uint16_hex(sig_len); log(")...\r\n");
     ret = mbedtls_pk_verify(&pk_ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash), sig, sig_len);
-    
-    if (ret != 0) {
-        log("!!! Signature verification FAILED: ");
-    } else {
-        log(">>> Signature VERIFIED successfully! <<<\r\n");
-    }
-
     mbedtls_pk_free(&pk_ctx);
-
     return (ret == 0);
 }
 
 
-void ota_send_response(uint8_t status) {
+void ota_send_response(uint8_t status) 
+{
     uint8_t payload[] = {status};
     uint32_t crc = crc32(payload, sizeof(payload)); // Assuming crc32 function is available
 
@@ -460,7 +537,23 @@ void ota_send_response(uint8_t status) {
         OTA_EOF
     };
     // Send frame via usart_putc loop
-    for (size_t i = 0; i < sizeof(frame); i++) {
+    for (size_t i = 0; i < sizeof(frame); i++) 
+    {
         usart_putc(frame[i]);
+    }
+}
+
+void ota_reset_timeout(void) 
+{
+    ota_last_byte_timestamp = get_systick(); // Assumes a get_systick() function
+}
+
+void ota_check_timeout(void) 
+{
+    if (ota_last_byte_timestamp != 0 && (get_systick() - ota_last_byte_timestamp) > OTA_TIMEOUT_MS) 
+    {
+        log("OTA session timed out.\r\n");
+        bootloader_set_state(BL_STATE_ERROR);
+        ota_last_byte_timestamp = 0; // Stop checking
     }
 }

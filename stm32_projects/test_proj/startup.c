@@ -1,4 +1,11 @@
+#include "stm32f7xx.h"
+
 extern int main(void);
+// --- Forward Declarations for Interrupt Handlers ---
+// The compiler needs to know these functions exist before they are used in the vector table.
+extern void SysTick_Handler(void);
+void Reset_Handler(void);
+void Default_Handler(void);
 
 /* Symbols defined in the linker script */
 extern unsigned long _estack, _etext, _sdata, _edata, _sbss, _ebss;
@@ -36,7 +43,6 @@ void (* const vector_table[])(void) = {
     Default_Handler,           // Debug Monitor
     0,                         // Reserved
     Default_Handler,           // PendSV
-    Default_Handler            // SysTick
+    SysTick_Handler            // SysTick: Changed from Default_Handler
     /* Add additional interrupt handlers as needed */
 };
-

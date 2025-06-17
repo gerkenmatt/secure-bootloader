@@ -93,6 +93,13 @@ typedef struct {
 void bootloader_init(void);
 
 /**
+ * @brief Runs one iteration of the bootloader's main state machine.
+ * * This function should be called repeatedly in the main application loop.
+ * It checks the current state and executes the appropriate handler.
+ */
+void bootloader_run_state_machine(void); 
+
+/**
  * Processes commands received from host
  * Handles commands like OTA update, configuration, etc.
  */
@@ -173,5 +180,11 @@ void init_bootloader_config(void);
  * @return Pointer to bootloader_config_t structure
  */
 const bootloader_config_t* read_boot_config(void);
+
+/**
+ * @brief Provides the current millisecond count since startup.
+ * @return The current value of the SysTick millisecond counter.
+ */
+uint32_t get_systick(void);
 
 #endif // BOOTLOADER_H

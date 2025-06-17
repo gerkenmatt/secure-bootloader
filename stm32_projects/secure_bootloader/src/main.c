@@ -13,8 +13,6 @@ static void log_state_transition(bootloader_state_t new_state);
 // --- Main Entry Point ---
 int main(void)
 {
-    bootloader_state_t current_state = BL_STATE_IDLE;
-    bool state_switched = false;
 
     system_init();               // Basic chip setup: FPU, cache, GPIO, etc.
     usart_init();                // Set up USART3 for serial debug output
@@ -24,17 +22,14 @@ int main(void)
     bootloader_init();           // Prepare internal state, verify memory aliasing
     validate_boot_environment(); // Confirm VTOR and aliasing are valid
 
+    log_state_transition(bootloader_get_state()); // Log initial state
+
     // Bootloader main loop: handle command mode or jump to app
     while (1)
     {
-        process_bootloader_command(); 
+        bootloader_run_state_machine();
 
-        state_switched = (bootloader_get_state() != current_state);
-        current_state = bootloader_get_state();
-        if (state_switched) {
-            log_state_transition(current_state);
-            state_switched = false;
-        }
+        //TODO: add watchdog? 
     }
     return 0;
 }
@@ -47,12 +42,12 @@ int main(void)
  */
 static void log_state_transition(bootloader_state_t new_state) {
     switch (new_state) {
-        case BL_STATE_READY:      usart_puts("Bootloader ready. Waiting for command (run/update)...\r\n"); break;
-        case BL_STATE_RECEIVING: usart_puts("State: Receiving firmware\r\n"); break;
-        case BL_STATE_PROGRAMMING: usart_puts("State: Programming flash\r\n"); break;
-        case BL_STATE_VERIFY:    usart_puts("State: Verifying firmware\r\n"); break;
-        case BL_STATE_ERROR:     usart_puts("State: Error occurred\r\n"); break;
-        default:                 usart_puts("State: Unknown\r\n"); break;
+        case BL_STATE_READY:        usart_puts("Bootloader ready. Waiting for command (run/update)...\r\n"); break;
+        case BL_STATE_RECEIVING:    usart_puts("State: Receiving firmware\r\n"); break;
+        case BL_STATE_PROGRAMMING:  usart_puts("State: Programming flash\r\n"); break;
+        case BL_STATE_VERIFY:       usart_puts("State: Verifying firmware\r\n"); break;
+        case BL_STATE_ERROR:        usart_puts("State: Error occurred\r\n"); break;
+        default:                    usart_puts("State: Unknown\r\n"); break;
     }
 }
 
@@ -62,6 +57,15 @@ static void log_state_transition(bootloader_state_t new_state) {
  */
 static void system_init(void)
 {
+    // --- Clock Configuration ---
+    uint32_t hclk_freq = 16000000; // Assume 16MHz HSI
+
+    // --- SysTick Configuration ---
+    // Configure the SysTick to fire an interrupt every 1 millisecond.
+    if (SysTick_Config(hclk_freq / 1000))
+    {
+        while(1); // Trap in an infinite loop on error.
+    }
 
     // Enable FPU (floating point unit)
     SCB->CPACR |= ((3UL << 20) | (3UL << 22));
