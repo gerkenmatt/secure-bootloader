@@ -145,7 +145,6 @@ void bootloader_run_state_machine(void)
 
 /**
  * @brief This function processes the actual commands once a full line is received.
- * NOTE: We have separated the receiving logic from the processing logic.
  * * @param cmd The null-terminated command string to process.
  */
 static void execute_full_command_set(const char* cmd)
@@ -247,7 +246,7 @@ static void handle_command_input(command_executor_t execute_func)
     static uint32_t buffer_index = 0;
 
     uint8_t byte;
-
+    
     // Check if a character is available from the ring buffer
     if (usart_getc(&byte)) 
     {

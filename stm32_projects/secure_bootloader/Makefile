@@ -7,18 +7,28 @@ OBJCOPY  := arm-none-eabi-objcopy
 GDB      := arm-none-eabi-gdb
 
 # Directories
-BUILD_DIR  := build
-SRC_DIR    := src
-INCLUDE_DIRS := \
-  -Iinclude \
-  -I$(HOME)/STM32CubeF7/Drivers/STM32F7xx_HAL_Driver/Inc \
-  -I$(HOME)/STM32CubeF7/Drivers/CMSIS/Device/ST/STM32F7xx/Include \
-  -I$(HOME)/STM32CubeF7/Drivers/CMSIS/Include
-MBEDTLS_DIR := lib/mbedtls
+BUILD_DIR       := build
+# Define base source directories
+CORE_SRC_DIR    := Core/Src
+APP_SRC_DIR     := App/Src
+DRIVERS_SRC_DIR := Drivers/Src
+MBEDTLS_DIR     := lib/mbedtls
+
+# Include Paths 
+INC_PATHS := \
+	-ICore/Inc	\
+	-IApp/Inc/bootloader	\
+	-IApp/Inc/cli	\
+	-IApp/Inc/ota	\
+	-IApp/Inc/common	\
+	-IDrivers/Inc/	\
+	-I$(HOME)/STM32CubeF7/Drivers/CMSIS/Device/ST/STM32F7xx/Include \
+	-I$(HOME)/STM32CubeF7/Drivers/CMSIS/Include \
+	-I$(MBEDTLS_DIR)/include # mbedTLS include
 
 # Source Files        
-SRCS := $(wildcard $(SRC_DIR)/*.c)
-OBJS := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS))
+C_SRCS := $(shell find $(CORE_SRC_DIR) $(APP_SRC_DIR) $(DRIVERS_SRC_DIR) -name "*.c")
+OBJS := $(patsubst %.c, $(BUILD_DIR)/%.o, $(C_SRCS))
 
 
 # Output Files
@@ -27,30 +37,31 @@ HEX    := $(BUILD_DIR)/$(PROJECT).hex
 BIN    := $(BUILD_DIR)/$(PROJECT).bin
 
 # Flags
-CFLAGS   := -mcpu=cortex-m7 -mthumb -O0 -g -ggdb -Wall -DSTM32F767xx $(INCLUDE_DIRS)
-CFLAGS   += -I$(MBEDTLS_DIR)/include
-CFLAGS   += -ffunction-sections -fdata-sections
+CFLAGS  := -mcpu=cortex-m7 -mthumb -O0 -g -ggdb -Wall -DSTM32F767xx $(INCLUDE_DIRS)
+CFLAGS 	+= -ffunction-sections -fdata-sections
+CFLAGS 	+= $(INC_PATHS)
 
 # Linker Flags
-LDFLAGS  := -T stm32f767z.ld -Wl,--gc-sections
-LDFLAGS  += -Wl,-Map=$(BUILD_DIR)/secure_bootloader.map
-LDFLAGS  += -specs=nosys.specs  # <--- CRITICAL ADDITION HERE
+LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections
+LDFLAGS += -Wl,-Map=$(BUILD_DIR)/secure_bootloader.map
+LDFLAGS += -specs=nosys.specs
+
 # Link mbed TLS library (and other libraries if any)
-LDLIBS   := lib/mbedtls/build/library/libmbedcrypto.a
-# If you had other libraries, you could add them like:
-# LDLIBS += -lm -lc # etc., though nosys.specs might affect how -lc behaves.
+LDLIBS  := lib/mbedtls/build/library/libmbedcrypto.a
 
 # Default target
 all: $(TARGET)
 
-# Linking
+# Linking Rule
+# Linking Rule
 $(TARGET): $(OBJS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@ # Pass CFLAGS for MCU flags, then OBJS, LDFLAGS, then LDLIBS
-	$(OBJCOPY) -O ihex $@ $(HEX)
-	$(OBJCOPY) -O binary $@ $(BIN)
+	@echo "Linking $(TARGET)..."
+	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@
 
 # Compile source files
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
+	@echo "Compiling $<..."
+	@mkdir -p $(dir $@) # Ensure the subdirectory in build/ exists (e.g., build/Core/Src)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Create build directory
