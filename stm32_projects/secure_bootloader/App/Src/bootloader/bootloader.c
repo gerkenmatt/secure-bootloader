@@ -3,11 +3,12 @@
 #include <string.h>
 #include "bootloader.h"
 #include "ota.h"
-#include "stm32f7xx.h"
+#include "stm32f767xx.h"
 #include "uart.h"
 #include "utilities.h"
 #include "flash.h"
 #include "mbedtls/platform.h"
+#include "cli.h"
 
 // --- Type Definitions ---
 // Define a function pointer type for our command executors.
@@ -18,18 +19,8 @@ typedef void (*command_executor_t)(const char* cmd);
 static bootloader_state_t current_state = BL_STATE_IDLE;
 static volatile uint32_t systick_ms_counter = 0;
 
-// --- Function Prototypes for Command Executors ---
-static void execute_full_command_set(const char* cmd);
-static void execute_recovery_command_set(const char* cmd);
-
 // --- Function Prototypes ---
 static void bootloader_jump_to(uint32_t app_address);
-static void handle_erase_command(const char* cmd_arg); 
-static void handle_print_command(const char* cmd_arg); 
-static void handle_bootloader_info(void);
-static void handle_activate_command(const char* cmd_arg);
-
-static void handle_command_input(command_executor_t execute_func);
 
 // --- Public Functions ---
 
@@ -101,7 +92,7 @@ void bootloader_run_state_machine(void)
     {
         case BL_STATE_READY:
             // In the READY state, handle input using the full command set.
-            handle_command_input(execute_full_command_set);
+            cli_process_input(current_state);
             break;
 
         case BL_STATE_RECEIVING:
@@ -133,155 +124,13 @@ void bootloader_run_state_machine(void)
                 log("\r\n!!! An error occurred. Entering recovery mode. Type 'help'. !!!\r\n");
                 error_indicated = true;
             }
-            handle_command_input(execute_recovery_command_set);
+            cli_process_input(current_state);
             break;
         }
 
         default:
             // Do nothing
             break;
-    }
-}
-
-/**
- * @brief This function processes the actual commands once a full line is received.
- * * @param cmd The null-terminated command string to process.
- */
-static void execute_full_command_set(const char* cmd)
-{
-    if (strcmp(cmd, "run") == 0 || strcmp(cmd, "r") == 0)
-    {
-        log("'run' command received. Attempting to boot active application...\r\n");
-        bootloader_jump_to_active_application();
-    }
-    else if (strcmp(cmd, "update") == 0)
-    {
-        log("Entering OTA mode...\r\n");
-        ota_reset_timeout(); // Start the OTA timeout timer
-        bootloader_set_state(BL_STATE_RECEIVING);
-    }
-    else if (strcmp(cmd, "reboot") == 0)
-    {
-        usart_puts("Rebooting...\r\n");
-        SCB_CleanDCache();          // TODO: is this needed?
-        NVIC_SystemReset();
-    }
-    else if (strcmp(cmd, "info") == 0) 
-    {
-        handle_bootloader_info();
-    }
-    else if (strncmp(cmd, "erase ", 6) == 0) 
-    {
-        // Handle "erase <slot_num>"
-        handle_erase_command(cmd + 6);
-    }
-    else if (strncmp(cmd, "p ", 2) == 0) {
-        // Handle "p <slot_num>"
-        handle_print_command(cmd + 2);
-    }
-    else if (strncmp(cmd, "activate ", 9) == 0) 
-    {
-        handle_activate_command(cmd + 9);
-    }
-    else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0)
-    {
-        usart_puts("Available commands:\r\n");
-        usart_puts("  run  - Jump to application\r\n");
-        usart_puts("  update <firmare_path>  - Start OTA update mode\r\n");
-        usart_puts("  p <0|1> - Print first 10 words of slot flash\r\n");
-        usart_puts("  erase <0|1> - Erase sectors of specified slot\r\n");
-        usart_puts("  info - Show bootloader information\r\n");
-        usart_puts("  help - Show this message\r\n");
-        usart_puts("  reboot - Reboot the device\r\n");
-    }
-    else if (strcmp(cmd, "status") == 0)
-    {
-        const bootloader_config_t* cfg = read_boot_config();
-        usart_puts("Active slot: ");
-        print_uint32_hex(cfg->active_slot);
-        usart_puts("\r\n");
-    }
-    else
-    {
-        usart_puts("Unknown command.\r\n");
-    }
-}
-
-/**
- * @brief Processes a limited, safe set of commands for recovery mode.
- */
-static void execute_recovery_command_set(const char* cmd)
-{
-    if (strcmp(cmd, "reboot") == 0) 
-    {
-        log("Rebooting from error state...\r\n");
-        NVIC_SystemReset();
-    } 
-    else if (strcmp(cmd, "info") == 0 || strcmp(cmd, "status") == 0) 
-    {
-        log("--- Recovery Mode Status ---\r\n");
-        handle_bootloader_info();
-    } 
-    else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0) 
-    {
-        usart_puts("--- Recovery Mode Commands ---\r\n");
-        usart_puts("  reboot   - Restart the device\r\n");
-        usart_puts("  info     - Show bootloader status\r\n");
-        usart_puts("  help     - Show this message\r\n");
-    } 
-    else 
-    {
-        usart_puts("Unknown or disallowed command. Allowed: 'reboot', 'info', 'help'.\r\n");
-    }
-}
-
-/**
- * @brief Handles incoming characters from UART to build a command string.
- * This function is NON-BLOCKING and should be called repeatedly.
- */
-static void handle_command_input(command_executor_t execute_func)
-{
-    // Static variables to preserve state across calls
-    static char command_buffer[64];
-    static uint32_t buffer_index = 0;
-
-    uint8_t byte;
-    
-    // Check if a character is available from the ring buffer
-    if (usart_getc(&byte)) 
-    {
-        
-        // --- Handle special characters ---
-        if (byte == '\r' || byte == '\n') 
-        { 
-            // End of command (Enter key)
-            usart_puts("\r\n"); // Echo newline for user
-            
-            if (buffer_index > 0) 
-            {
-                command_buffer[buffer_index] = '\0'; // Null-terminate the string
-                execute_func(command_buffer); // Call the provided executor
-            }
-            buffer_index = 0; // Reset for the next command
-        }
-        else if (byte == 127 || byte == '\b') 
-        { 
-            // Backspace
-            if (buffer_index > 0) 
-            {
-                buffer_index--;
-                usart_puts("\b \b"); // Erase character on terminal
-            }
-        }
-        // --- Handle printable characters ---
-        else if (byte >= ' ' && byte <= '~') 
-        {
-            if (buffer_index < (sizeof(command_buffer) - 1)) 
-            {
-                command_buffer[buffer_index++] = byte;
-                usart_putc(byte); // Echo character back to the user
-            }
-        }
     }
 }
 
@@ -468,118 +317,7 @@ bool write_boot_config(const bootloader_config_t* new_config)
 
 }
 
-/**
- * @brief Handles the 'erase' command to wipe an application slot.
- * @param cmd_arg The argument string following "erase ", e.g., "0" or "1".
- */
-static void handle_erase_command(const char* cmd_arg) 
-{
-    // Convert the argument string to an integer
-    int slot_to_erase = atoi(cmd_arg);
 
-    if (slot_to_erase != 0 && slot_to_erase != 1) 
-    {
-        log("Invalid slot specified. Use 'erase 0' or 'erase 1'.\r\n");
-        return;
-    }
-
-    const bootloader_config_t* cfg = read_boot_config();
-    
-    // // --- SAFETY CHECK ---
-    // // Prevent erasing the currently active slot.
-    // if (slot_to_erase == cfg->active_slot) 
-    // {
-    //     log("Cannot erase the currently active slot\r\n");
-    //     return;
-    // }
-
-    unlock_flash();
-    clear_flash_errors();
-
-    // Configure flash access control and program size
-    FLASH->ACR |= (1 << 8) | (1 << 9);  // Enable instruction and data cache
-    FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
-
-
-    log("Erasing slot: "); print_uint8_hex(slot_to_erase); log("\r\n");
-
-    uint8_t sector_to_erase = (slot_to_erase == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
-    uint32_t erase_slot_addr = (slot_to_erase == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
-
-
-    // Perform the erase
-    if (erase_flash_sectors(
-        sector_to_erase, 
-        sector_to_erase + SLOT_SECTOR_COUNT -1, 
-        erase_slot_addr, 
-        SLOT_SIZE)) 
-    {
-        log("Successfully erased slot\r\n");
-        
-        // Update the bootloader config to mark the slot as invalid
-        bootloader_config_t new_cfg;
-        memcpy(&new_cfg, cfg, sizeof(bootloader_config_t));
-        
-        new_cfg.slot[slot_to_erase].is_valid = 0;
-        new_cfg.slot[slot_to_erase].boot_attempts_remaining = 0;
-        new_cfg.slot[slot_to_erase].fw_size = 0;
-        new_cfg.slot[slot_to_erase].fw_crc = 0xFFFFFFFF;
-        
-        if (!write_boot_config(&new_cfg)) 
-        {
-            log("Failed to update boot config after erase.\r\n");
-        } 
-        else 
-        {
-            log("Boot config updated to reflect erased slot.\r\n");
-        }
-    } 
-    else 
-    {
-        log("Failed to erase slot\r\n");
-    }
-}
-
-/**
- * @brief Handles the 'p' (print) command to show memory contents of a slot.
- * @param cmd_arg The argument string following "p ", e.g., "0" or "1".
- */
-static void handle_print_command(const char* cmd_arg) 
-{
-    int slot_to_print = atoi(cmd_arg);
-
-    if (slot_to_print != 0 && slot_to_print != 1) 
-    {
-        log("Invalid slot specified. Use 'p 0' or 'p 1'.\r\n");
-        return;
-    }
-
-    uint32_t base_addr = (slot_to_print == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
-    volatile uint32_t* flash_addr = (volatile uint32_t*)base_addr;
-
-    usart_puts("First 10 words at SLOT_ADDR:\r\n");
-    for (int i = 0; i < 10; i++)  // Read 10 32-bit words
-    {
-        print_uint32_hex(flash_addr[i]);
-        usart_puts(" ");
-    }
-    usart_puts("\r\n");
-}
-
-static void handle_bootloader_info(void) 
-{
-    const bootloader_config_t* cfg = read_boot_config();
-    usart_puts("Bootloader Configuration:\r\n");
-    usart_puts("|  Magic: 0x"); print_uint32_hex(cfg->magic); usart_puts("\r\n");
-    usart_puts("|  Active Slot: "); print_uint32_hex(cfg->active_slot); usart_puts("\r\n");
-    for (int i = 0; i < 2; i++) {
-        usart_puts("|  Slot "); print_uint32_hex(i); usart_puts(":\r\n");
-        usart_puts("|    is_valid: "); print_uint32_hex(cfg->slot[i].is_valid); usart_puts("\r\n");
-        usart_puts("|    boot_attempts_remaining: "); print_uint32_hex(cfg->slot[i].boot_attempts_remaining); usart_puts("\r\n");
-        usart_puts("|    fw_size: 0x"); print_uint32_hex(cfg->slot[i].fw_size); usart_puts("\r\n");
-        usart_puts("|    fw_crc: 0x"); print_uint32_hex(cfg->slot[i].fw_crc); usart_puts("\r\n");
-    }
-}
 
 
 
@@ -588,36 +326,7 @@ const bootloader_config_t* read_boot_config(void)
     return (const bootloader_config_t*)CONFIG_ADDR;
 }
 
-/**
- * @brief Handles the 'activate' command to switch the active slot.
- * @param cmd_arg The argument string following "activate ", e.g., "0" or "1".
- */
-static void handle_activate_command(const char* cmd_arg) 
-{
-    int slot_to_activate = atoi(cmd_arg);
-    if (slot_to_activate != 0 && slot_to_activate != 1) 
-    {
-        log("Invalid slot specified. Use 'activate 0' or 'activate 1'.\r\n");
-        return;
-    }
-    const bootloader_config_t* cfg = read_boot_config();
-    // if (!cfg->slot[slot_to_activate].is_valid) 
-    // {
-    //     log("Cannot activate an invalid slot.\r\n");
-    //     return;
-    // }
-    bootloader_config_t new_cfg;
-    memcpy(&new_cfg, cfg, sizeof(bootloader_config_t));
-    new_cfg.active_slot = slot_to_activate;
-    if (!write_boot_config(&new_cfg)) 
-    {
-        log("Failed to update boot config for slot activation.\r\n");
-    } 
-    else 
-    {
-        log("Active slot switched to: "); print_uint32_hex(slot_to_activate); log("\r\n");
-    }
-}
+
 
 
 /**
