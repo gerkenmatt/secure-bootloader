@@ -15,9 +15,9 @@ int main(void)
 {
 
     system_init();               // Basic chip setup: FPU, cache, GPIO, etc.
-    usart_init();                // Set up USART3 for serial debug output
+    uart_init();                // Set up USART3 for serial debug output
     __enable_irq();
-    usart_puts("\n\nBootloader started.\r\n");
+    uart_puts("\n\nBootloader started.\r\n");
 
     bootloader_init();           // Prepare internal state, verify memory aliasing
     validate_boot_environment(); // Confirm VTOR and aliasing are valid
@@ -42,12 +42,12 @@ int main(void)
  */
 static void log_state_transition(bootloader_state_t new_state) {
     switch (new_state) {
-        case BL_STATE_READY:        usart_puts("Bootloader ready. Waiting for command (run/update)...\r\n"); break;
-        case BL_STATE_RECEIVING:    usart_puts("State: Receiving firmware\r\n"); break;
-        case BL_STATE_PROGRAMMING:  usart_puts("State: Programming flash\r\n"); break;
-        case BL_STATE_VERIFY:       usart_puts("State: Verifying firmware\r\n"); break;
-        case BL_STATE_ERROR:        usart_puts("State: Error occurred\r\n"); break;
-        default:                    usart_puts("State: Unknown\r\n"); break;
+        case BL_STATE_READY:        uart_puts("Bootloader ready. Waiting for command (run/update)...\r\n"); break;
+        case BL_STATE_RECEIVING:    uart_puts("State: Receiving firmware\r\n"); break;
+        case BL_STATE_PROGRAMMING:  uart_puts("State: Programming flash\r\n"); break;
+        case BL_STATE_VERIFY:       uart_puts("State: Verifying firmware\r\n"); break;
+        case BL_STATE_ERROR:        uart_puts("State: Error occurred\r\n"); break;
+        default:                    uart_puts("State: Unknown\r\n"); break;
     }
 }
 

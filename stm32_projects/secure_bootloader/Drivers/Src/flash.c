@@ -114,11 +114,11 @@ bool erase_flash_sectors(uint8_t start_sector, uint8_t end_sector, uint32_t star
         {
             ota_send_response(RESP_NACK);
             log("Flash erase check failed at address 0x");
-            print_uint32_hex((uint32_t)&check[i]);
+            uart_print_hex32((uint32_t)&check[i]);
             log(" with value 0x");
-            print_uint32_hex(check[i]);
+            uart_print_hex32(check[i]);
             log("\r\n");
-            log("Flash errors: "); print_uint32_hex(FLASH->SR); log("\r\n");
+            log("Flash errors: "); uart_print_hex32(FLASH->SR); log("\r\n");
             return false;
         }
     }

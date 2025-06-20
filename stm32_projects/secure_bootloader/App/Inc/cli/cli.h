@@ -4,8 +4,9 @@
 #include <stdbool.h> 
 #include "bootloader.h"
 
-// // Forward declaration to avoid circular dependency if bootloader needs to be referenced
-// typedef enum { /* ... bootloader_state_t ... */ } bootloader_state_t; 
+// -----------------------------------------------------------------------------
+// Function Prototypes
+// -----------------------------------------------------------------------------
 
 /**
  * @brief Initializes the CLI module (e.g., UART for input/output).

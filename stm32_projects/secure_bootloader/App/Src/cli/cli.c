@@ -25,7 +25,7 @@ static void handle_activate_cmd(const char* cmd_arg);
 void cli_init(void) 
 {
     // Any CLI-specific initialization, e.g., print a prompt
-    usart_puts("Bootloader CLI Ready.\r\n");
+    uart_puts("Bootloader CLI Ready.\r\n");
 }
 
 void cli_process_input(bootloader_state_t current_bl_state) 
@@ -51,14 +51,14 @@ static void handle_cmd_line_input(cmd_executor_t execute_func) {
     uint8_t byte;
 
     // Check if a character is available from the ring buffer
-    if (usart_getc(&byte)) 
+    if (uart_getc(&byte)) 
     {
         
         // --- Handle special characters ---
         if (byte == '\r' || byte == '\n') 
         { 
             // End of cmd (Enter key)
-            usart_puts("\r\n"); // Echo newline for user
+            uart_puts("\r\n"); // Echo newline for user
             
             if (buffer_index > 0) 
             {
@@ -73,7 +73,7 @@ static void handle_cmd_line_input(cmd_executor_t execute_func) {
             if (buffer_index > 0) 
             {
                 buffer_index--;
-                usart_puts("\b \b"); // Erase character on terminal
+                uart_puts("\b \b"); // Erase character on terminal
             }
         }
         // --- Handle printable characters ---
@@ -82,7 +82,7 @@ static void handle_cmd_line_input(cmd_executor_t execute_func) {
             if (buffer_index < (sizeof(cmd_buffer) - 1)) 
             {
                 cmd_buffer[buffer_index++] = byte;
-                usart_putc(byte); // Echo character back to the user
+                uart_putc(byte); // Echo character back to the user
             }
         }
     }
@@ -107,7 +107,7 @@ static void execute_full_cmd_set(const char* cmd)
     }
     else if (strcmp(cmd, "reboot") == 0)
     {
-        usart_puts("Rebooting...\r\n");
+        uart_puts("Rebooting...\r\n");
         SCB_CleanDCache();          // TODO: is this needed?
         NVIC_SystemReset();
     }
@@ -130,25 +130,25 @@ static void execute_full_cmd_set(const char* cmd)
     }
     else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0)
     {
-        usart_puts("Available commands:\r\n");
-        usart_puts("  run  - Jump to application\r\n");
-        usart_puts("  update <firmare_path>  - Start OTA update mode\r\n");
-        usart_puts("  p <0|1> - Print first 10 words of slot flash\r\n");
-        usart_puts("  erase <0|1> - Erase sectors of specified slot\r\n");
-        usart_puts("  info - Show bootloader information\r\n");
-        usart_puts("  help - Show this message\r\n");
-        usart_puts("  reboot - Reboot the device\r\n");
+        uart_puts("Available commands:\r\n");
+        uart_puts("  run  - Jump to application\r\n");
+        uart_puts("  update <firmare_path>  - Start OTA update mode\r\n");
+        uart_puts("  p <0|1> - Print first 10 words of slot flash\r\n");
+        uart_puts("  erase <0|1> - Erase sectors of specified slot\r\n");
+        uart_puts("  info - Show bootloader information\r\n");
+        uart_puts("  help - Show this message\r\n");
+        uart_puts("  reboot - Reboot the device\r\n");
     }
     else if (strcmp(cmd, "status") == 0)
     {
         const bootloader_config_t* cfg = read_boot_config();
-        usart_puts("Active slot: ");
-        print_uint32_hex(cfg->active_slot);
-        usart_puts("\r\n");
+        uart_puts("Active slot: ");
+        uart_print_hex32(cfg->active_slot);
+        uart_puts("\r\n");
     }
     else
     {
-        usart_puts("Unknown command.\r\n");
+        uart_puts("Unknown command.\r\n");
     }
 }
 
@@ -169,14 +169,14 @@ static void execute_recovery_cmd_set(const char* cmd)
     } 
     else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0) 
     {
-        usart_puts("--- Recovery Mode Commands ---\r\n");
-        usart_puts("  reboot   - Restart the device\r\n");
-        usart_puts("  info     - Show bootloader status\r\n");
-        usart_puts("  help     - Show this message\r\n");
+        uart_puts("--- Recovery Mode Commands ---\r\n");
+        uart_puts("  reboot   - Restart the device\r\n");
+        uart_puts("  info     - Show bootloader status\r\n");
+        uart_puts("  help     - Show this message\r\n");
     } 
     else 
     {
-        usart_puts("Unknown or disallowed command. Allowed: 'reboot', 'info', 'help'.\r\n");
+        uart_puts("Unknown or disallowed command. Allowed: 'reboot', 'info', 'help'.\r\n");
     }
 }
 
@@ -208,7 +208,7 @@ static void handle_activate_cmd(const char* cmd_arg)
     } 
     else 
     {
-        log("Active slot switched to: "); print_uint32_hex(slot_to_activate); log("\r\n");
+        log("Active slot switched to: "); uart_print_hex32(slot_to_activate); log("\r\n");
     }
 }
 
@@ -216,15 +216,15 @@ static void handle_activate_cmd(const char* cmd_arg)
 static void handle_info_cmd(void) 
 {
     const bootloader_config_t* cfg = read_boot_config();
-    usart_puts("Bootloader Configuration:\r\n");
-    usart_puts("|  Magic: 0x"); print_uint32_hex(cfg->magic); usart_puts("\r\n");
-    usart_puts("|  Active Slot: "); print_uint32_hex(cfg->active_slot); usart_puts("\r\n");
+    uart_puts("Bootloader Configuration:\r\n");
+    uart_puts("|  Magic: 0x"); uart_print_hex32(cfg->magic); uart_puts("\r\n");
+    uart_puts("|  Active Slot: "); uart_print_hex32(cfg->active_slot); uart_puts("\r\n");
     for (int i = 0; i < 2; i++) {
-        usart_puts("|  Slot "); print_uint32_hex(i); usart_puts(":\r\n");
-        usart_puts("|    is_valid: "); print_uint32_hex(cfg->slot[i].is_valid); usart_puts("\r\n");
-        usart_puts("|    boot_attempts_remaining: "); print_uint32_hex(cfg->slot[i].boot_attempts_remaining); usart_puts("\r\n");
-        usart_puts("|    fw_size: 0x"); print_uint32_hex(cfg->slot[i].fw_size); usart_puts("\r\n");
-        usart_puts("|    fw_crc: 0x"); print_uint32_hex(cfg->slot[i].fw_crc); usart_puts("\r\n");
+        uart_puts("|  Slot "); uart_print_hex32(i); uart_puts(":\r\n");
+        uart_puts("|    is_valid: "); uart_print_hex32(cfg->slot[i].is_valid); uart_puts("\r\n");
+        uart_puts("|    boot_attempts_remaining: "); uart_print_hex32(cfg->slot[i].boot_attempts_remaining); uart_puts("\r\n");
+        uart_puts("|    fw_size: 0x"); uart_print_hex32(cfg->slot[i].fw_size); uart_puts("\r\n");
+        uart_puts("|    fw_crc: 0x"); uart_print_hex32(cfg->slot[i].fw_crc); uart_puts("\r\n");
     }
 }
 
@@ -245,13 +245,13 @@ static void handle_print_cmd(const char* cmd_arg)
     uint32_t base_addr = (slot_to_print == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
     volatile uint32_t* flash_addr = (volatile uint32_t*)base_addr;
 
-    usart_puts("First 10 words at SLOT_ADDR:\r\n");
+    uart_puts("First 10 words at SLOT_ADDR:\r\n");
     for (int i = 0; i < 10; i++)  // Read 10 32-bit words
     {
-        print_uint32_hex(flash_addr[i]);
-        usart_puts(" ");
+        uart_print_hex32(flash_addr[i]);
+        uart_puts(" ");
     }
-    usart_puts("\r\n");
+    uart_puts("\r\n");
 }
 
 /**
@@ -287,7 +287,7 @@ static void handle_erase_cmd(const char* cmd_arg)
     FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
 
 
-    log("Erasing slot: "); print_uint8_hex(slot_to_erase); log("\r\n");
+    log("Erasing slot: "); uart_print_hex8(slot_to_erase); log("\r\n");
 
     uint8_t sector_to_erase = (slot_to_erase == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
     uint32_t erase_slot_addr = (slot_to_erase == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;

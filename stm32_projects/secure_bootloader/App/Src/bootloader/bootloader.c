@@ -38,7 +38,7 @@ void bootloader_init(void)
 {
     // Initialize configuration if not already set
     const bootloader_config_t* config = read_boot_config();
-    log("*****magic: "); print_uint32_hex(config->magic); log("\r\n");
+    log("*****magic: "); uart_print_hex32(config->magic); log("\r\n");
     if (config->magic != BOOT_CONFIG_MAGIC) {
         // Initialize config defaults and write to flash
         log("******************Initializing bootloader configuration******************\r\n");
@@ -209,11 +209,11 @@ void bootloader_jump_to_active_application(void)
 
 static void bootloader_jump_to(uint32_t app_address) 
 {
-    log("Jumping to application at: "); print_uint32_hex(app_address); usart_puts("\r\n");
+    log("Jumping to application at: "); uart_print_hex32(app_address); uart_puts("\r\n");
 
     // De-initialize peripherals and disable interrupts before jumping
     __disable_irq();
-    // It's good practice to de-init peripherals used by bootloader, e.g., usart_deinit();
+    // It's good practice to de-init peripherals used by bootloader, e.g., uart_deinit();
     
     // Reset system clocks to default state before handing over
     RCC->CR |= RCC_CR_HSION;
@@ -259,24 +259,24 @@ bootloader_status_t bootloader_verify_memory_aliasing(void)
 
 void validate_boot_environment(void)
 {
-    usart_puts("Validating boot environment...\r\n");
+    uart_puts("Validating boot environment...\r\n");
 
     // Make sure the vector table is remapped to the correct ITCM alias
     if ((SCB->VTOR & 0xFFF00000) != BOOTLOADER_START_ALIAS)
     {
-        usart_puts("\tError: Unexpected VTOR address.\r\n");
+        uart_puts("\tError: Unexpected VTOR address.\r\n");
         while (1) { for (volatile int i = 0; i < 50000; i++); }
     }
-    usart_puts("\tVTOR configuration OK\r\n");
+    uart_puts("\tVTOR configuration OK\r\n");
 
     // Make sure aliasing between ITCM and AXI flash matches
     if (bootloader_verify_memory_aliasing() != BL_OK)
     {
-        usart_puts("\tError: Memory aliasing failed.\r\n");
+        uart_puts("\tError: Memory aliasing failed.\r\n");
         current_state = BL_STATE_ERROR;
         return;
     }
-    usart_puts("\tMemory aliasing verified\r\n");
+    uart_puts("\tMemory aliasing verified\r\n");
 }
 
 bool write_boot_config(const bootloader_config_t* new_config) 
@@ -298,7 +298,7 @@ bool write_boot_config(const bootloader_config_t* new_config)
     if (!erase_flash_sectors(CONFIG_SECTOR, CONFIG_SECTOR, CONFIG_ADDR, 0x40000)) 
     {
         log("Failed to eraseb config sector!\r\n");
-        log("Flash errors before: "); print_uint32_hex(errs); log("\r\n");
+        log("Flash errors before: "); uart_print_hex32(errs); log("\r\n");
         lock_flash(); // Always re-lock flash
         return false;
     }
@@ -317,17 +317,10 @@ bool write_boot_config(const bootloader_config_t* new_config)
 
 }
 
-
-
-
-
 const bootloader_config_t* read_boot_config(void) 
 {
     return (const bootloader_config_t*)CONFIG_ADDR;
 }
-
-
-
 
 /**
  * @brief The SysTick interrupt handler, called automatically every 1ms.

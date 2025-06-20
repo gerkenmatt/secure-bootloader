@@ -9,6 +9,7 @@
 #include "mbedtls/pk.h"
 #include "mbedtls/md.h"
 #include "mbedtls/error.h"
+#include "stm32f767xx.h"
 
 #define CHUNK_SIZE 256
 #define PUBKEY_DER_LEN 91
@@ -113,7 +114,7 @@ bool ota_receive_frame(ota_frame_t* frame)
     uint8_t byte;
 
     // Process all bytes currently in the ring buffer
-    while (usart_getc(&byte)) 
+    while (uart_getc(&byte)) 
     {
         ota_reset_timeout(); // A byte was received, reset the timeout
 
@@ -222,7 +223,7 @@ void handle_ota_command(const ota_frame_t* frame)
         default:
             // Unknown command received
             ota_send_response(RESP_NACK);
-            log("Unknown CMD: "); print_uint32_hex(frame->data[0]); log("\r\n");
+            log("Unknown CMD: "); uart_print_hex32(frame->data[0]); log("\r\n");
             break;
     }
 }
@@ -327,71 +328,6 @@ static bool process_cmd_start(void)
     return true;
 }
 
-// /**
-//  * @brief Processes the CMD_END command to finalize the OTA update.
-//  * 
-//  * Verifies the firmware signature, updates bootloader configuration,
-//  * locks the flash memory, and reboots the system.
-//  *
-//  * @return true if successful, false if signature verification failed
-//  */
-// static bool process_cmd_end(void) 
-// {
-//     log("CMD_END received. Finalizing update...\r\n");
-
-//     uint32_t inactive_slot_addr = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
-
-//     // 1. Verify the signature of the newly downloaded firmware
-//     log("Verifying signature...\r\n");
-//     if (!verify_signature(
-//         (uint8_t*)inactive_slot_addr, 
-//         ota_session.header.fw_size, 
-//         ota_session.signature, 
-//         ota_session.signature_length))
-//     {
-//         log("Signature verification FAILED. Aborting update.\r\n");
-//         ota_send_response(RESP_NACK);
-//         return false;
-//     }
-//     log("Signature verified\r\n");
-//     lock_flash(); // for debugging
-
-//     // 2. Prepare the new configuration with the atomic swap
-//     bootloader_config_t new_cfg;
-//     memcpy(&new_cfg, read_boot_config(), sizeof(bootloader_config_t)); // Make a mutable copy
-
-//     // Update metadata for the new firmware slot
-//     new_cfg.slot[ota_session.inactive_slot_index].fw_size = ota_session.header.fw_size;
-//     new_cfg.slot[ota_session.inactive_slot_index].fw_crc = ota_session.header.fw_crc;
-//     new_cfg.slot[ota_session.inactive_slot_index].is_valid = 1;
-//     new_cfg.slot[ota_session.inactive_slot_index].boot_attempts_remaining = BOOT_ATTEMPT_COUNT;
-
-//     // Perform the atomic swap by changing the active slot index
-//     new_cfg.active_slot = ota_session.inactive_slot_index;
-
-//     // 3. Write the new configuration back to flash
-//     log("Writing boot config to activate slot\r\n");
-//     if (!write_boot_config(&new_cfg)) 
-//     {
-//         ota_send_response(RESP_NACK);
-//         log("Failed to write boot config\r\n");
-//         return false; // Terminate OTA session, something is wrong with flash config
-//     }
-//     log("Boot config written\r\n");
-//     ota_send_response(RESP_ACK);
-
-//     bootloader_set_state(BL_STATE_VERIFY); // Let the main loop handle the next step
-//     return true; // Exit the OTA handler successfully
-
-//     // // OTA update complete, lock flash and reboot
-//     // FLASH->CR |= FLASH_CR_LOCK;
-//     // log("Flash locked\r\nRebooting...\r\n");
-//     // SCB_CleanDCache();        // Clean data cache ----- TODO: is this needed? 
-//     // NVIC_SystemReset();       // Reset system
-
-//     // return false; // Code should not reach here
-// }
-
 /**
  * @brief Handles incoming OTA header packet containing firmware metadata.
  * 
@@ -447,7 +383,7 @@ static void handle_ota_data(const ota_frame_t* frame)
     if (!program_flash(ota_session.flash_write_address, (uint32_t*)frame->data, frame->length)) 
     {
         ota_send_response(RESP_NACK);
-        log("Flash write failed at address: "); print_uint32_hex(ota_session.flash_write_address); log("\r\n");
+        log("Flash write failed at address: "); uart_print_hex32(ota_session.flash_write_address); log("\r\n");
         bootloader_set_state(BL_STATE_ERROR);
     }
     else
@@ -536,10 +472,10 @@ void ota_send_response(uint8_t status)
         (uint8_t)((crc >> 24) & 0xFF),
         OTA_EOF
     };
-    // Send frame via usart_putc loop
+    // Send frame via uart_putc loop
     for (size_t i = 0; i < sizeof(frame); i++) 
     {
-        usart_putc(frame[i]);
+        uart_putc(frame[i]);
     }
 }
 
