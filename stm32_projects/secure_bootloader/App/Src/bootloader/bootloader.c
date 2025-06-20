@@ -10,14 +10,9 @@
 #include "mbedtls/platform.h"
 #include "cli.h"
 
-// --- Type Definitions ---
-// Define a function pointer type for our command executors.
-// This makes the code cleaner and easier to read.
-typedef void (*command_executor_t)(const char* cmd);
 
 // --- Static State ---
 static bootloader_state_t current_state = BL_STATE_IDLE;
-static volatile uint32_t systick_ms_counter = 0;
 
 // --- Function Prototypes ---
 static void bootloader_jump_to(uint32_t app_address);
@@ -320,21 +315,4 @@ bool write_boot_config(const bootloader_config_t* new_config)
 const bootloader_config_t* read_boot_config(void) 
 {
     return (const bootloader_config_t*)CONFIG_ADDR;
-}
-
-/**
- * @brief The SysTick interrupt handler, called automatically every 1ms.
- */
-void SysTick_Handler(void) 
-{
-    systick_ms_counter++;
-}
-
-/**
- * @brief Provides the current millisecond count since startup.
- * @return The current value of the SysTick millisecond counter.
- */
-uint32_t get_systick(void) 
-{
-    return systick_ms_counter;
 }

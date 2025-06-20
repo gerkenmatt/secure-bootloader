@@ -181,10 +181,5 @@ void init_bootloader_config(void);
  */
 const bootloader_config_t* read_boot_config(void);
 
-/**
- * @brief Provides the current millisecond count since startup.
- * @return The current value of the SysTick millisecond counter.
- */
-uint32_t get_systick(void);
 
 #endif // BOOTLOADER_H

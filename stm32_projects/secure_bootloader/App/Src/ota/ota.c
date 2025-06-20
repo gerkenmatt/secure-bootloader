@@ -10,6 +10,7 @@
 #include "mbedtls/md.h"
 #include "mbedtls/error.h"
 #include "stm32f767xx.h"
+#include "systick.h" 
 
 #define CHUNK_SIZE 256
 #define PUBKEY_DER_LEN 91

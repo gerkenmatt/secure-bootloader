@@ -2,8 +2,9 @@
 #include <string.h>
 #include "bootloader.h"
 #include "ota.h"
-#include "stm32f7xx.h"
+#include "stm32f767xx.h"
 #include "uart.h"
+#include "systick.h"
 
 // --- Function Prototypes ---
 static void system_init(void);
@@ -57,15 +58,8 @@ static void log_state_transition(bootloader_state_t new_state) {
  */
 static void system_init(void)
 {
-    // --- Clock Configuration ---
-    uint32_t hclk_freq = 16000000; // Assume 16MHz HSI
 
-    // --- SysTick Configuration ---
-    // Configure the SysTick to fire an interrupt every 1 millisecond.
-    if (SysTick_Config(hclk_freq / 1000))
-    {
-        while(1); // Trap in an infinite loop on error.
-    }
+    systick_init();
 
     // Enable FPU (floating point unit)
     SCB->CPACR |= ((3UL << 20) | (3UL << 22));
