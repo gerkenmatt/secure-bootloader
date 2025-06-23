@@ -4,6 +4,8 @@
 #include "mbedtls/error.h"
 #include "mbedtls/sha256.h"
 #include "uart.h"
+#include "mbedtls/platform.h"  
+
 
 #define PUBKEY_DER_LEN 91
 
@@ -48,4 +50,14 @@ bool ota_crypto_verify_signature(const uint8_t *data, uint32_t data_len, const u
     ret = mbedtls_pk_verify(&pk_ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash), sig, sig_len);
     mbedtls_pk_free(&pk_ctx);
     return (ret == 0);
+}
+
+/* A simple, volatile‐pointer loop that the compiler
+ * cannot optimize away, and which does not rely on
+ * any function pointers or libc. */
+void mbedtls_platform_zeroize( void *buf, size_t len )
+{
+    volatile unsigned char *p = (volatile unsigned char*) buf;
+    while( len-- )
+        *p++ = 0;
 }

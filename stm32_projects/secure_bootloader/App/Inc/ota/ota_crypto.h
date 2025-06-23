@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 /**
  * @brief Verifies the ECDSA-SHA256 signature of a firmware image.
@@ -14,5 +15,7 @@
  * @return true if the signature is valid, false otherwise.
  */
 bool ota_crypto_verify_signature(const uint8_t* fw_data, uint32_t fw_len, const uint8_t* signature, uint16_t sig_len);
+
+void mbedtls_platform_zeroize( void *buf, size_t len );
 
 #endif // OTA_CRYPTO_H

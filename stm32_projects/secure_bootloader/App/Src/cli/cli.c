@@ -8,6 +8,7 @@
 #include <string.h> 
 #include <stdint.h>
 #include <stdlib.h>
+#include "boot_config.h"
 
 typedef void (*cmd_executor_t)(const char* cmd);
 

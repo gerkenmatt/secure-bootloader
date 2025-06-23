@@ -2,6 +2,7 @@
 #include "ota_crypto.h" 
 #include "ota_protocol.h" 
 
+#include "boot_config.h"
 #include "bootloader.h"
 #include "uart.h"
 #include "utilities.h"

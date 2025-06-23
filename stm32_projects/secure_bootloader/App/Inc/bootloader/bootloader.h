@@ -12,7 +12,6 @@ typedef enum {
     BL_STATE_IDLE = 0,
     BL_STATE_READY,
     BL_STATE_RECEIVING,
-    BL_STATE_PROGRAMMING,
     BL_STATE_VERIFY,
     BL_STATE_ERROR
 } bootloader_state_t;
@@ -60,28 +59,6 @@ typedef enum {
 #define SLOT_SECTOR_COUNT         3           // Each slot occupies 3 x 256KB sectors
 
 // -----------------------------------------------------------------------------
-// Boot Configuration
-// -----------------------------------------------------------------------------
-
-#define BOOT_CONFIG_MAGIC        0xB007CF60
-#define BOOT_ATTEMPT_COUNT       7            // Number of boot attempts before rollback
-
-
-typedef struct {
-    uint32_t fw_size;
-    uint32_t fw_crc;
-    uint8_t  is_valid;
-    uint8_t  boot_attempts_remaining; // For rollback
-} slot_metadata_t;
-
-// Bootloader configuration structure for A/B swap
-typedef struct {
-    uint32_t magic;             // Magic number to identify valid config
-    uint32_t active_slot;       // 0 for Slot A, 1 for Slot B
-    slot_metadata_t slot[2];    // Metadata for Slot A and B
-} bootloader_config_t;
-
-// -----------------------------------------------------------------------------
 // Function Prototypes
 // -----------------------------------------------------------------------------
 
@@ -98,12 +75,6 @@ void bootloader_init(void);
  * It checks the current state and executes the appropriate handler.
  */
 void bootloader_run_state_machine(void); 
-
-/**
- * Processes commands received from host
- * Handles commands like OTA update, configuration, etc.
- */
-void process_bootloader_command(void);  
 
 /**
  * Sets bootloader state to new value
@@ -136,50 +107,12 @@ void bootloader_jump_to_active_application(void);
  */
 bootloader_status_t bootloader_verify_memory_aliasing(void);
 
-/**
- * Reads and returns state of BOOT0 pin (PC13)
- * 
- * @return 1 if pin high, 0 if pin low
- */
-uint32_t bootloader_get_boot_mode(void);
-
-/**
- * Returns pointer to bootloader configuration
- * 
- * @return Pointer to bootloader_config_t structure
- */
-const bootloader_config_t* bootloader_get_config(void);
 
 /**
  * Validates boot environment configuration
  * Checks VTOR settings and memory aliasing
  */
 void validate_boot_environment(void);
-
-/**
- * Writes the bootloader configuration to flash memory
- * 
- * This function unlocks the flash memory, erases the sector where the 
- * bootloader configuration is stored, and writes the new configuration 
- * data to flash. It then locks the flash memory again.
- * 
- * @param new_config Pointer to the new bootloader configuration structure
- * @return true if the configuration was successfully written, false otherwise
- */
-bool write_boot_config(const bootloader_config_t* new_config);
-
-/**
- * Initializes bootloader configuration
- * Sets up default config values if magic number not present
- */
-void init_bootloader_config(void); 
-
-/**
- * Reads the bootloader configuration from flash memory
- * 
- * @return Pointer to bootloader_config_t structure
- */
-const bootloader_config_t* read_boot_config(void);
 
 
 #endif // BOOTLOADER_H

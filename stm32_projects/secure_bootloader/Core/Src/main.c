@@ -29,8 +29,6 @@ int main(void)
     while (1)
     {
         bootloader_run_state_machine();
-
-        //TODO: add watchdog? 
     }
     return 0;
 }
@@ -41,11 +39,12 @@ int main(void)
  *
  * @param new_state New bootloader state being transitioned to
  */
-static void log_state_transition(bootloader_state_t new_state) {
-    switch (new_state) {
+static void log_state_transition(bootloader_state_t new_state) 
+{
+    switch (new_state) 
+    {
         case BL_STATE_READY:        uart_puts("Bootloader ready. Waiting for command (run/update)...\r\n"); break;
         case BL_STATE_RECEIVING:    uart_puts("State: Receiving firmware\r\n"); break;
-        case BL_STATE_PROGRAMMING:  uart_puts("State: Programming flash\r\n"); break;
         case BL_STATE_VERIFY:       uart_puts("State: Verifying firmware\r\n"); break;
         case BL_STATE_ERROR:        uart_puts("State: Error occurred\r\n"); break;
         default:                    uart_puts("State: Unknown\r\n"); break;

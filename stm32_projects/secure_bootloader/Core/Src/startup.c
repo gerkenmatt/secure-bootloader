@@ -1,4 +1,4 @@
-#include "stm32f7xx.h"
+#include "stm32f767xx.h"
 
 
 extern int main(void);
@@ -40,26 +40,36 @@ void HardFault_Handler(void)
 
     while (1)
     {
-        if (hfsr & (1 << 30)) { // Forced HardFault
+        if (hfsr & (1 << 30)) 
+        { 
+            // Forced HardFault
             GPIOB->ODR ^= (1UL << 7);  // blue
         }
 
-        if (bfsr) {
-            for (int i = 0; i < 1; i++) {
+        if (bfsr) 
+        {
+            for (int i = 0; i < 1; i++) 
+            {
                 GPIOB->ODR ^= (1UL << 14); // red
                 for (volatile int d = 0; d < 100000; d++);
                 GPIOB->ODR ^= (1UL << 14);
                 for (volatile int d = 0; d < 100000; d++);
             }
-        } else if (mmfsr) {
-            for (int i = 0; i < 2; i++) {
+        } 
+        else if (mmfsr) 
+        {
+            for (int i = 0; i < 2; i++) 
+            {
                 GPIOB->ODR ^= (1UL << 14);
                 for (volatile int d = 0; d < 100000; d++);
                 GPIOB->ODR ^= (1UL << 14);
                 for (volatile int d = 0; d < 100000; d++);
             }
-        } else if (ufsr) {
-            for (int i = 0; i < 3; i++) {
+        } 
+        else if (ufsr) 
+        {
+            for (int i = 0; i < 3; i++) 
+            {
                 GPIOB->ODR ^= (1UL << 14);
                 for (volatile int d = 0; d < 100000; d++);
                 GPIOB->ODR ^= (1UL << 14);
