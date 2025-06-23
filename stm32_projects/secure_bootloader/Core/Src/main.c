@@ -5,6 +5,7 @@
 #include "stm32f767xx.h"
 #include "uart.h"
 #include "systick.h"
+#include "logger.h"
 
 // --- Function Prototypes ---
 static void system_init(void);
@@ -24,6 +25,9 @@ int main(void)
     validate_boot_environment(); // Confirm VTOR and aliasing are valid
 
     log_state_transition(bootloader_get_state()); // Log initial state
+
+    LOG_INFO("****************************Testing %d\r\n", 6969);
+    LOG_ERROR("***************************Testing error log %s\r\n", "hello");
 
     // Bootloader main loop: handle command mode or jump to app
     while (1)
