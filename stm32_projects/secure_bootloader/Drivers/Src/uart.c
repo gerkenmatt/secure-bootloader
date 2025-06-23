@@ -1,5 +1,7 @@
 #include "uart.h"
 #include "stm32f767xx.h"
+#include <stdio.h>
+#include <stdarg.h>
 
 // --- Private Driver Configuration ---
 #define UART_PERIPH         USART6
@@ -22,8 +24,9 @@
 #define UART_BAUDRATE       115200UL
 #define UART_BAUD_DIV       (UART_SYSCLK_FREQ / UART_BAUDRATE)
 
-// --- Ring Buffer for RX ---
+// --- Buffer Configurations ---
 #define UART_RX_BUFFER_SIZE 256 // Power of 2 for efficient '%' -> '&' optimization
+#define UART_TX_BUFFER_SIZE 256 // Buffer for uart_printf
 
 // --- Type Definitions ---
 typedef struct {
@@ -38,7 +41,6 @@ static ring_buffer_t rx_buffer = {0};
 // --- Function Prototypes ---
 static void ring_buffer_write(uint8_t data);
 static bool ring_buffer_read(uint8_t* data);
-static void print_hex_value(uint64_t val, int num_nibbles);
 
 // --- Public Function Implementations ---
 
@@ -107,39 +109,31 @@ void uart_puts(const char *str)
         uart_putc(*str++);
 }
 
-// --- Hex Printing Helpers ---
-
-static void print_hex_value(uint64_t val, int num_nibbles) 
+/**
+ * @brief Sends a formatted string via UART.
+ * @note This function uses a fixed-size buffer on the stack. Ensure the
+ * final formatted string does not exceed UART_TX_BUFFER_SIZE.
+ * @param fmt The format string (e.g., "Value: %d\r\n").
+ * @param ... The arguments for the format string.
+ */
+void uart_printf(const char *fmt, ...)
 {
-    char hex_str[17];
-    hex_str[num_nibbles] = '\0';
-    for (int i = num_nibbles - 1; i >= 0; i--) 
-    {
-        uint8_t nibble = (val >> (i * 4)) & 0xF;
-        hex_str[(num_nibbles - 1) - i] = (nibble < 10) ? ('0' + nibble) : ('A' + nibble - 10);
-    }
-    uart_puts(hex_str);
+    char buf[UART_TX_BUFFER_SIZE];
+    va_list args;
+    
+    // Start processing variable arguments
+    va_start(args, fmt);
+    
+    // Format the string into the buffer, vsnprintf is safe against overflows
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    
+    // End processing variable arguments
+    va_end(args);
+    
+    // Send the formatted string from the buffer
+    uart_puts(buf);
 }
 
-void uart_print_hex64(uint64_t val) 
-{
-    print_hex_value(val, 16);
-}
-
-void uart_print_hex32(uint32_t val) 
-{
-    print_hex_value(val, 8);
-}
-
-void uart_print_hex16(uint16_t val) 
-{
-    print_hex_value(val, 4);
-}
-
-void uart_print_hex8(uint8_t val) 
-{
-    print_hex_value(val, 2);
-}
 
 // --- Ring Buffer Implementation ---
 

@@ -37,32 +37,15 @@ bool uart_getc(uint8_t* data);
  * @param str The string to send.
  */
 void uart_puts(const char *str);
-/**
- * @brief Prints a 64-bit unsigned integer in hexadecimal format.
- * @note  Pads with leading zeros to 16 characters.
- * @param val The value to print.
- */
-void uart_print_hex64(uint64_t val);
 
 /**
- * @brief Prints a 32-bit unsigned integer in hexadecimal format.
- * @note  Pads with leading zeros to 8 characters.
- * @param val The value to print.
+ * @brief Sends a formatted string via UART, similar to printf.
+ * @note  This is a blocking call. The formatted string is created in a
+ * stack-allocated buffer, so be mindful of stack size and message length.
+ * @param fmt The format string.
+ * @param ... Variable arguments for the format string.
  */
-void uart_print_hex32(uint32_t val);
+void uart_printf(const char *fmt, ...);
 
-/**
- * @brief Prints a 16-bit unsigned integer in hexadecimal format.
- * @note  Pads with leading zeros to 4 characters.
- * @param val The value to print.
- */
-void uart_print_hex16(uint16_t val);
-
-/**
- * @brief Prints an 8-bit unsigned integer in hexadecimal format.
- * @note  Pads with leading zeros to 2 characters.
- * @param val The value to print.
- */
-void uart_print_hex8(uint8_t val);
 
 #endif // UART_H

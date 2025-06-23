@@ -11,9 +11,6 @@
 /// Total size of fixed fields in OTA frame
 #define FRAME_TOTAL_LEN   10
 
-/// Logging macro
-#define log(msg)          uart_puts(msg)
-
 /// Size of sector 5 (128KB)
 #define SECTOR5_SIZE      (128 * 1024)
 

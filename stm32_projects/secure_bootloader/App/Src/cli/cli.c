@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include "boot_config.h"
+#include "logger.h"
 
 typedef void (*cmd_executor_t)(const char* cmd);
 
@@ -97,12 +98,12 @@ static void execute_full_cmd_set(const char* cmd)
 {
     if (strcmp(cmd, "run") == 0 || strcmp(cmd, "r") == 0)
     {
-        log("'run' command received. Attempting to boot active application...\r\n");
+        LOG_INFO("'run' command received. Attempting to boot active application...\r\n");
         bootloader_jump_to_active_application();
     }
     else if (strcmp(cmd, "update") == 0)
     {
-        log("Entering OTA mode...\r\n");
+        LOG_INFO("Entering OTA mode...\r\n");
         ota_reset_timeout(); // Start the OTA timeout timer
         bootloader_set_state(BL_STATE_RECEIVING);
     }
@@ -143,9 +144,7 @@ static void execute_full_cmd_set(const char* cmd)
     else if (strcmp(cmd, "status") == 0)
     {
         const bootloader_config_t* cfg = read_boot_config();
-        uart_puts("Active slot: ");
-        uart_print_hex32(cfg->active_slot);
-        uart_puts("\r\n");
+        uart_printf("Active slot: %d\r\n", cfg->active_slot);
     }
     else
     {
@@ -160,12 +159,12 @@ static void execute_recovery_cmd_set(const char* cmd)
 {
     if (strcmp(cmd, "reboot") == 0) 
     {
-        log("Rebooting from error state...\r\n");
+        uart_puts("Rebooting from error state...\r\n");
         NVIC_SystemReset();
     } 
     else if (strcmp(cmd, "info") == 0 || strcmp(cmd, "status") == 0) 
     {
-        log("--- Recovery Mode Status ---\r\n");
+        uart_puts("--- Recovery Mode Status ---\r\n");
         handle_info_cmd();
     } 
     else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0) 
@@ -191,13 +190,13 @@ static void handle_activate_cmd(const char* cmd_arg)
     int slot_to_activate = atoi(cmd_arg);
     if (slot_to_activate != 0 && slot_to_activate != 1) 
     {
-        log("Invalid slot specified. Use 'activate 0' or 'activate 1'.\r\n");
+        LOG_ERROR("Invalid slot specified. Use 'activate 0' or 'activate 1'.\r\n");
         return;
     }
     const bootloader_config_t* cfg = read_boot_config();
     // if (!cfg->slot[slot_to_activate].is_valid) 
     // {
-    //     log("Cannot activate an invalid slot.\r\n");
+    //     LOG_ERROR("Cannot activate an invalid slot.\r\n");
     //     return;
     // }
     bootloader_config_t new_cfg;
@@ -205,11 +204,11 @@ static void handle_activate_cmd(const char* cmd_arg)
     new_cfg.active_slot = slot_to_activate;
     if (!write_boot_config(&new_cfg)) 
     {
-        log("Failed to update boot config for slot activation.\r\n");
+        LOG_ERROR("Failed to update boot config for slot activation.\r\n");
     } 
     else 
     {
-        log("Active slot switched to: "); uart_print_hex32(slot_to_activate); log("\r\n");
+        LOG_INFO("Active slot switched to: %d\r\n", slot_to_activate);
     }
 }
 
@@ -218,14 +217,15 @@ static void handle_info_cmd(void)
 {
     const bootloader_config_t* cfg = read_boot_config();
     uart_puts("Bootloader Configuration:\r\n");
-    uart_puts("|  Magic: 0x"); uart_print_hex32(cfg->magic); uart_puts("\r\n");
-    uart_puts("|  Active Slot: "); uart_print_hex32(cfg->active_slot); uart_puts("\r\n");
-    for (int i = 0; i < 2; i++) {
-        uart_puts("|  Slot "); uart_print_hex32(i); uart_puts(":\r\n");
-        uart_puts("|    is_valid: "); uart_print_hex32(cfg->slot[i].is_valid); uart_puts("\r\n");
-        uart_puts("|    boot_attempts_remaining: "); uart_print_hex32(cfg->slot[i].boot_attempts_remaining); uart_puts("\r\n");
-        uart_puts("|    fw_size: 0x"); uart_print_hex32(cfg->slot[i].fw_size); uart_puts("\r\n");
-        uart_puts("|    fw_crc: 0x"); uart_print_hex32(cfg->slot[i].fw_crc); uart_puts("\r\n");
+    uart_printf("|  Magic: 0x%08X\r\n", cfg->magic);
+    uart_printf("|  Active Slot: %d\r\n", cfg->active_slot);
+    for (int i = 0; i < 2; i++) 
+    {
+        uart_printf("|  Slot %d:\r\n", i);
+        uart_printf("|    is_valid: %d\r\n", cfg->slot[i].is_valid);
+        uart_printf("|    boot_attempts_remaining: %d\r\n", cfg->slot[i].boot_attempts_remaining);
+        uart_printf("|    fw_size: 0x%08X\r\n", cfg->slot[i].fw_size);
+        uart_printf("|    fw_crc: 0x%08X\r\n", cfg->slot[i].fw_crc);
     }
 }
 
@@ -239,7 +239,7 @@ static void handle_print_cmd(const char* cmd_arg)
 
     if (slot_to_print != 0 && slot_to_print != 1) 
     {
-        log("Invalid slot specified. Use 'p 0' or 'p 1'.\r\n");
+        uart_puts("Invalid slot specified. Use 'p 0' or 'p 1'.\r\n");
         return;
     }
 
@@ -249,8 +249,7 @@ static void handle_print_cmd(const char* cmd_arg)
     uart_puts("First 10 words at SLOT_ADDR:\r\n");
     for (int i = 0; i < 10; i++)  // Read 10 32-bit words
     {
-        uart_print_hex32(flash_addr[i]);
-        uart_puts(" ");
+        uart_printf("0x%08X ", flash_addr[i]);
     }
     uart_puts("\r\n");
 }
@@ -266,7 +265,7 @@ static void handle_erase_cmd(const char* cmd_arg)
 
     if (slot_to_erase != 0 && slot_to_erase != 1) 
     {
-        log("Invalid slot specified. Use 'erase 0' or 'erase 1'.\r\n");
+        uart_puts("Invalid slot specified. Use 'erase 0' or 'erase 1'.\r\n");
         return;
     }
 
@@ -276,7 +275,7 @@ static void handle_erase_cmd(const char* cmd_arg)
     // // Prevent erasing the currently active slot.
     // if (slot_to_erase == cfg->active_slot) 
     // {
-    //     log("Cannot erase the currently active slot\r\n");
+    //     uart_puts("Cannot erase the currently active slot\r\n");
     //     return;
     // }
 
@@ -287,15 +286,14 @@ static void handle_erase_cmd(const char* cmd_arg)
     FLASH->ACR |= (1 << 8) | (1 << 9);  // Enable instruction and data cache
     FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
 
-
-    log("Erasing slot: "); uart_print_hex8(slot_to_erase); log("\r\n");
+    uart_printf("Erasing slot: %d\r\n", slot_to_erase);
 
     uint8_t sector_to_erase = (slot_to_erase == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
 
     // Perform the erase
     if (erase_flash_sectors(sector_to_erase, sector_to_erase + SLOT_SECTOR_COUNT -1))
     {
-        log("Successfully erased slot\r\n");
+        uart_puts("Successfully erased slot\r\n");
         
         // Update the bootloader config to mark the slot as invalid
         bootloader_config_t new_cfg;
@@ -308,15 +306,15 @@ static void handle_erase_cmd(const char* cmd_arg)
         
         if (!write_boot_config(&new_cfg)) 
         {
-            log("Failed to update boot config after erase.\r\n");
+            uart_puts("Failed to update boot config after erase.\r\n");
         } 
         else 
         {
-            log("Boot config updated to reflect erased slot.\r\n");
+            uart_puts("Boot config updated to reflect erased slot.\r\n");
         }
     } 
     else 
     {
-        log("Failed to erase slot\r\n");
+        uart_puts("Failed to erase slot\r\n");
     }
 }

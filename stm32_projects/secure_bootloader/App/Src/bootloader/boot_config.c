@@ -4,6 +4,7 @@
 #include <string.h> 
 #include "ota.h" //TODO: shouldnt have to include this
 #include "uart.h"
+#include "logger.h"
 
 void init_bootloader_config(void) 
 {
@@ -27,12 +28,12 @@ void init_bootloader_config(void)
 
     if (!write_boot_config(&cfg))
     {
-        log("Failed to write initial bootloader configuration!\r\n");
+        LOG_ERROR("Failed to write initial bootloader configuration!\r\n");
         bootloader_set_state(BL_STATE_ERROR);
     }
     else
     {
-        log("Bootloader configuration initialized successfully.\r\n");
+        LOG_INFO("Bootloader configuration initialized successfully.\r\n");
     }
 }
 
@@ -47,7 +48,7 @@ bool write_boot_config(const bootloader_config_t* new_config)
     if (erase_flash_sectors(CONFIG_SECTOR, CONFIG_SECTOR) != FLASH_OK) 
     
     {
-        log("Failed to erase config sector!\r\n");
+        LOG_ERROR("Failed to erase config sector!\r\n");
         lock_flash();
         return false;
     }
@@ -55,7 +56,7 @@ bool write_boot_config(const bootloader_config_t* new_config)
     // Write the new config struct to flash
     if (program_flash(CONFIG_ADDR, (const uint32_t*)new_config, sizeof(bootloader_config_t)) != FLASH_OK) 
     {
-        log("Failed to write new config to flash!\r\n");
+        LOG_ERROR("Failed to write new config to flash!\r\n");
         lock_flash();
         return false;
     }

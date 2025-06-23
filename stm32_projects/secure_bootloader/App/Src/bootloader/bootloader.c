@@ -10,6 +10,7 @@
 #include "mbedtls/platform.h"
 #include "cli.h"
 #include "boot_config.h"
+#include "logger.h"
 
 
 // --- Static State ---
@@ -33,7 +34,7 @@ void bootloader_set_state(bootloader_state_t new_state)
 
     if (new_state == BL_STATE_RECEIVING) 
     {
-        log("Entering OTA mode. Initializing OTA module...\r\n");
+        LOG_INFO("Entering OTA mode. Initializing OTA module...\r\n");
         ota_init();
     }
     
@@ -44,10 +45,9 @@ void bootloader_init(void)
 {
     // Initialize configuration if not already set
     const bootloader_config_t* config = read_boot_config();
-    log("*****magic: "); uart_print_hex32(config->magic); log("\r\n");
     if (config->magic != BOOT_CONFIG_MAGIC) {
         // Initialize config defaults and write to flash
-        log("******************Initializing bootloader configuration******************\r\n");
+        LOG_INFO("***Initializing bootloader configuration***\r\n");
         init_bootloader_config();
     }
 
@@ -72,15 +72,15 @@ void bootloader_run_state_machine(void)
             break;
 
         case BL_STATE_VERIFY:
-            log("Verifying received firmware...\r\n");
+            LOG_INFO("Verifying received firmware...\r\n");
             if (ota_finalize_and_verify()) 
             {
-                log("Verification successful. Rebooting to new firmware.\r\n");
+                LOG_INFO("Verification successful. Rebooting to new firmware.\r\n");
                 NVIC_SystemReset();
             } 
             else 
             {
-                log("Verification FAILED. Entering error state.\r\n");
+                LOG_ERROR("Verification FAILED. Entering error state.\r\n");
                 bootloader_set_state(BL_STATE_ERROR);
             }
             break;
@@ -93,7 +93,7 @@ void bootloader_run_state_machine(void)
             if (!error_indicated) 
             {
                 GPIOB->ODR |= (1UL << 14); // Set red LED
-                log("\r\n!!! An error occurred. Entering recovery mode. Type 'help'. !!!\r\n");
+                LOG_ERROR("\r\n!!! An error occurred. Entering recovery mode. Type 'help'. !!!\r\n");
                 error_indicated = true;
             }
             cli_process_input(current_state);
@@ -114,14 +114,15 @@ void bootloader_jump_to_active_application(void)
     // Boundary check
     if (active_slot_idx > 1) 
     {
-        log("Invalid active_slot index \r\n");
+        LOG_ERROR("Invalid active_slot index \r\n");
         bootloader_set_state(BL_STATE_ERROR);
         return;
     }
 
     // --- Rollback Logic ---
-    if (cfg->slot[active_slot_idx].boot_attempts_remaining == 0) {
-        log("!!! Boot attempts failed for slot. Rolling back... !!!\r\n");
+    if (cfg->slot[active_slot_idx].boot_attempts_remaining == 0) 
+    {
+        LOG_ERROR("!!! Boot attempts failed for slot. Rolling back... !!!\r\n");
         
         uint32_t fallback_slot_idx = (active_slot_idx == SLOTA) ? SLOTB : SLOTA;
         
@@ -135,12 +136,12 @@ void bootloader_jump_to_active_application(void)
             new_cfg.slot[fallback_slot_idx].boot_attempts_remaining = BOOT_ATTEMPT_COUNT; 
             write_boot_config(&new_cfg);
             
-            log("Rolled back to valid slot. Rebooting...\r\n");
+            LOG_INFO("Rolled back to valid slot. Rebooting...\r\n");
             NVIC_SystemReset();
         } 
         else 
         {
-            log("!!! Fallback slot is not valid. Cannot roll back. Halting. !!!\r\n");
+            LOG_ERROR("!!! Fallback slot is not valid. Cannot roll back. Halting. !!!\r\n");
             bootloader_set_state(BL_STATE_ERROR);
             return;
         }
@@ -162,16 +163,18 @@ void bootloader_jump_to_active_application(void)
     // --- Verify and Jump ---
     const slot_metadata_t* active_slot_meta = &cfg->slot[active_slot_idx];
 
-    if (!active_slot_meta->is_valid) {
-        log("Attempting to boot invalid slot. Aborting.\r\n");
+    if (!active_slot_meta->is_valid) 
+    {
+        LOG_ERROR("Attempting to boot invalid slot. Aborting.\r\n");
         bootloader_set_state(BL_STATE_ERROR);
         return;
     }
     
-    if (!verify_crc(jump_address, active_slot_meta->fw_size, active_slot_meta->fw_crc)) {
-        log("CRC check failed for active slot. Aborting jump.\r\n");
+    if (!verify_crc(jump_address, active_slot_meta->fw_size, active_slot_meta->fw_crc)) 
+    {
+        LOG_ERROR("CRC check failed for active slot. Aborting jump.\r\n");
         // This boot attempt failed. The counter was already decremented. On next boot, it will try again or roll back.
-        log("Rebooting to re-evaluate boot state...\r\n");
+        LOG_ERROR("Rebooting to re-evaluate boot state...\r\n");
         NVIC_SystemReset();
         return;
     }
@@ -181,7 +184,7 @@ void bootloader_jump_to_active_application(void)
 
 static void bootloader_jump_to(uint32_t app_address) 
 {
-    log("Jumping to application at: "); uart_print_hex32(app_address); uart_puts("\r\n");
+    LOG_INFO("Jumping to application at: 0x%08X\r\n"); 
 
     // De-initialize peripherals and disable interrupts before jumping
     __disable_irq();
@@ -231,22 +234,22 @@ bootloader_status_t bootloader_verify_memory_aliasing(void)
 
 void validate_boot_environment(void)
 {
-    uart_puts("Validating boot environment...\r\n");
+    LOG_INFO("Validating boot environment...\r\n");
 
     // Make sure the vector table is remapped to the correct ITCM alias
     if ((SCB->VTOR & 0xFFF00000) != BOOTLOADER_START_ALIAS)
     {
-        uart_puts("\tError: Unexpected VTOR address.\r\n");
+        LOG_ERROR("\tError: Unexpected VTOR address.\r\n");
         while (1) { for (volatile int i = 0; i < 50000; i++); }
     }
-    uart_puts("\tVTOR configuration OK\r\n");
+    LOG_INFO("\tVTOR configuration OK\r\n");
 
     // Make sure aliasing between ITCM and AXI flash matches
     if (bootloader_verify_memory_aliasing() != BL_OK)
     {
-        uart_puts("\tError: Memory aliasing failed.\r\n");
+        LOG_ERROR("\tError: Memory aliasing failed.\r\n");
         current_state = BL_STATE_ERROR;
         return;
     }
-    uart_puts("\tMemory aliasing verified\r\n");
+    LOG_INFO("\tMemory aliasing verified\r\n");
 }

@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include "logger.h"
 
 // A struct to hold the properties of a single flash sector
 typedef struct 
@@ -40,18 +41,16 @@ static uint32_t get_size_for_sectors(uint8_t start_sector, uint8_t end_sector);
 
 flash_status_t program_flash(uint32_t addr, const uint32_t* data, uint32_t length_bytes)
 {
+    // The number of 32-bit words to program.
+    uint32_t num_words = (length_bytes + 3) / 4;
 
-    // Process data in 32-bit word chunks
-    for (uint16_t i = 0; i < length_bytes; i += 4) 
+    for (uint32_t i = 0; i < num_words; i++) 
     {
-        uint32_t word = 0xFFFFFFFF;
-    
-        // Handle partial words at end of frame
-        uint16_t len = (length_bytes - i >= 4) ? 4 : (length_bytes - i);
-        memcpy(&word, (const uint8_t*)data + i, len);
+        uint32_t current_addr = addr + (i * 4);
+        uint32_t word_to_write = data[i];
 
         // Program the word to flash
-        flash_status_t write_status = program_flash_word(addr, word);
+        flash_status_t write_status = program_flash_word(current_addr, word_to_write);
 
         // Check the return status immediately.
         if (write_status != FLASH_OK) 
@@ -59,43 +58,15 @@ flash_status_t program_flash(uint32_t addr, const uint32_t* data, uint32_t lengt
             return write_status;
         }
 
-        // Verify written data
-        uint32_t verify = *(volatile uint32_t *)addr;
-        if (verify != word) 
+        // Verify the written data by reading it back.
+        uint32_t verified_word = *(volatile uint32_t *)current_addr;
+        if (verified_word != word_to_write) 
         {
             return FLASH_ERROR_VERIFY;
         }
-
-        addr += 4;
     }
+
     return FLASH_OK;
-    // return true;
-    // // The number of 32-bit words to program.
-    // uint32_t num_words = (length_bytes + 3) / 4;
-
-    // for (uint32_t i = 0; i < num_words; i++) 
-    // {
-    //     uint32_t current_addr = addr + (i * 4);
-    //     uint32_t word_to_write = data[i];
-
-    //     // Program the word to flash
-    //     flash_status_t write_status = program_flash_word(current_addr, word_to_write);
-
-    //     // Check the return status immediately.
-    //     if (write_status != FLASH_OK) 
-    //     {
-    //         return write_status;
-    //     }
-
-    //     // Verify the written data by reading it back.
-    //     uint32_t verified_word = *(volatile uint32_t *)current_addr;
-    //     if (verified_word != word_to_write) 
-    //     {
-    //         return FLASH_ERROR_VERIFY;
-    //     }
-    // }
-
-    // return FLASH_OK;
 }
 
 /**
@@ -110,7 +81,7 @@ static bool program_flash_word(uint32_t addr, uint32_t word)
     // Check if address is 4-byte aligned
     if (addr & 0x3) 
     {
-        log("Error: Address not 4-byte aligned\r\n");
+        LOG_ERROR("Error: Address not 4-byte aligned\r\n");
         return FLASH_ERROR_ALIGNMENT;
     }
 
@@ -140,7 +111,7 @@ static bool program_flash_word(uint32_t addr, uint32_t word)
     // Check for any programming errors
     if (FLASH->SR & (FLASH_SR_PGAERR | FLASH_SR_WRPERR | FLASH_SR_OPERR | FLASH_SR_PGPERR | FLASH_SR_ERSERR)) 
     {
-        log("Error: Flash programming failed\r\n");
+        LOG_ERROR("Error: Flash programming failed\r\n");
         FLASH->CR &= ~FLASH_CR_PG;
         // Report a generic write error
         return FLASH_ERROR;
