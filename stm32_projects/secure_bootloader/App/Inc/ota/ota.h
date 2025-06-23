@@ -8,32 +8,6 @@
 #include "mbedtls/pk.h"
 #include "mbedtls/error.h"
 
-// -----------------------------------------------------------------------------
-// Constants
-// -----------------------------------------------------------------------------
-
-/// OTA packet types
-#define PACKET_CMD        0x01
-#define PACKET_HEADER     0x02
-#define PACKET_DATA       0x03
-#define PACKET_RESP       0x04
-#define PACKET_SIG        0x05
-
-/// OTA command types
-#define CMD_START         0xA0
-#define CMD_END           0xA1
-
-/// OTA response types
-#define RESP_ACK          0xAB
-#define RESP_NACK         0xCD
-
-/// OTA frame markers
-#define OTA_SOF           0xA5
-#define OTA_EOF           0xB6
-
-/// Maximum data size per OTA packet
-#define OTA_MAX_DATA      256
-
 /// Total size of fixed fields in OTA frame
 #define FRAME_TOTAL_LEN   10
 
@@ -49,14 +23,6 @@
 // Data Structures
 // -----------------------------------------------------------------------------
 
-/// Structure representing a received OTA frame
-typedef struct {
-    uint8_t  type;                       // Packet type
-    uint16_t length;                     // Length of data field
-    uint8_t  data[OTA_MAX_DATA];         // Payload data
-    uint32_t crc;                        // CRC32 of payload
-} ota_frame_t;
-
 /// Structure representing firmware metadata header
 typedef struct {
     uint32_t fw_size;                    // Firmware size in bytes
@@ -69,16 +35,12 @@ typedef struct {
 // Function Prototypes
 // -----------------------------------------------------------------------------
 
-
-
 /**
- * @brief Sends a response packet back to the host.
- * 
- * Frame format: [SOF][PACKET_RESP][LEN=1][0x00][STATUS][0x00 x4][EOF]
- *
- * @param status Response status code (RESP_ACK or RESP_NACK)
+ * @brief Initializes the OTA module.
+ * This function should be called when the bootloader enters the OTA state.
  */
-void ota_send_response(uint8_t status);
+void ota_init(void);
+
 
 /**
  * @brief Processes the OTA data stream in a non-blocking manner.

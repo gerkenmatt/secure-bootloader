@@ -1,5 +1,5 @@
 #include <stddef.h>
-#include "mbedtls/platform.h"   /* for the prototype */
+#include "mbedtls/platform.h"   
 
 /* A simple, volatile‐pointer loop that the compiler
  * cannot optimize away, and which does not rely on
@@ -10,3 +10,5 @@ void mbedtls_platform_zeroize( void *buf, size_t len )
     while( len-- )
         *p++ = 0;
 }
+
+//TODO: move this to ota_crypto.c? 

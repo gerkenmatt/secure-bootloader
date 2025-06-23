@@ -26,6 +26,16 @@ bootloader_state_t bootloader_get_state(void)
 
 void bootloader_set_state(bootloader_state_t new_state) 
 {
+    if (current_state == new_state) 
+        return; // No change
+    
+
+    if (new_state == BL_STATE_RECEIVING) 
+    {
+        log("Entering OTA mode. Initializing OTA module...\r\n");
+        ota_init();
+    }
+    
     current_state = new_state;
 }
 
@@ -67,9 +77,6 @@ void init_bootloader_config(void)
     cfg.slot[1].fw_size = 0;
     cfg.slot[1].fw_crc = 0xFFFFFFFF;
 
-    unlock_flash();
-    program_flash_word(CONFIG_ADDR, 0xdeadbeef);
-    lock_flash();
     if (!write_boot_config(&cfg))
     {
         log("Failed to write initial bootloader configuration!\r\n");
@@ -278,28 +285,19 @@ bool write_boot_config(const bootloader_config_t* new_config)
 {
     if (!new_config) return false;
 
+    flash_prepare_for_write();
 
-    //---------TODO: can I move this to function? 
-    clear_flash_errors();
-    unlock_flash();
-
-    // Configure flash access control and program size
-    FLASH->ACR |= (1 << 8) | (1 << 9); // Enable instruction and data cache
-    FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
-    //--------------------------------------------
-
-    uint32_t errs = FLASH->SR;
     // Erase the config sector
-    if (!erase_flash_sectors(CONFIG_SECTOR, CONFIG_SECTOR, CONFIG_ADDR, 0x40000)) 
+    if (erase_flash_sectors(CONFIG_SECTOR, CONFIG_SECTOR) != FLASH_OK) 
+    
     {
-        log("Failed to eraseb config sector!\r\n");
-        log("Flash errors before: "); uart_print_hex32(errs); log("\r\n");
-        lock_flash(); // Always re-lock flash
+        log("Failed to erase config sector!\r\n");
+        lock_flash();
         return false;
     }
 
     // Write the new config struct to flash
-    if (!program_flash(CONFIG_ADDR, (const uint32_t*)new_config, sizeof(bootloader_config_t))) 
+    if (program_flash(CONFIG_ADDR, (const uint32_t*)new_config, sizeof(bootloader_config_t)) != FLASH_OK) 
     {
         log("Failed to write new config to flash!\r\n");
         lock_flash();
@@ -307,7 +305,6 @@ bool write_boot_config(const bootloader_config_t* new_config)
     }
 
     lock_flash();
-
     return true;
 
 }

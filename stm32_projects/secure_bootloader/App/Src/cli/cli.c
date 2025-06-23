@@ -290,15 +290,9 @@ static void handle_erase_cmd(const char* cmd_arg)
     log("Erasing slot: "); uart_print_hex8(slot_to_erase); log("\r\n");
 
     uint8_t sector_to_erase = (slot_to_erase == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
-    uint32_t erase_slot_addr = (slot_to_erase == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
-
 
     // Perform the erase
-    if (erase_flash_sectors(
-        sector_to_erase, 
-        sector_to_erase + SLOT_SECTOR_COUNT -1, 
-        erase_slot_addr, 
-        SLOT_SIZE)) 
+    if (erase_flash_sectors(sector_to_erase, sector_to_erase + SLOT_SECTOR_COUNT -1))
     {
         log("Successfully erased slot\r\n");
         

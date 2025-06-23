@@ -1,0 +1,51 @@
+#include "ota_crypto.h"
+#include "mbedtls/pk.h"
+#include "mbedtls/md.h"
+#include "mbedtls/error.h"
+#include "mbedtls/sha256.h"
+#include "uart.h"
+
+#define PUBKEY_DER_LEN 91
+
+// --- Public Key ---
+// The public key is embedded in the bootloader to verify firmware signatures.
+// For production, this key should be protected against tampering.
+static const unsigned char pubkey_der[] = {
+  0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02,
+  0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
+  0x42, 0x00, 0x04, 0x04, 0xb8, 0x40, 0x1e, 0xa6, 0x42, 0xa4, 0xf8, 0xef,
+  0xeb, 0x1a, 0x1d, 0xc0, 0xe7, 0x12, 0x6f, 0x13, 0x31, 0x72, 0xfb, 0x8d,
+  0x13, 0xc2, 0xd8, 0xc2, 0xc8, 0xb6, 0x99, 0x5e, 0xb8, 0xa2, 0x4c, 0x58,
+  0x7c, 0x72, 0x0f, 0x4a, 0x21, 0x5b, 0x56, 0x76, 0xcf, 0xe5, 0xba, 0xd9,
+  0x6d, 0x3e, 0xc0, 0x6c, 0xb3, 0xd4, 0xad, 0x48, 0xf4, 0x07, 0xa7, 0xdc,
+  0x29, 0x46, 0x41, 0xef, 0x57, 0x38, 0x74
+};
+
+bool ota_crypto_verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t *sig, uint16_t sig_len) 
+{
+    int ret;
+    uint8_t hash[32];
+    mbedtls_pk_context pk_ctx;
+    mbedtls_sha256_context sha_ctx;
+
+    mbedtls_sha256_init(&sha_ctx);
+    if (mbedtls_sha256_starts(&sha_ctx, 0) != 0 ||
+        mbedtls_sha256_update(&sha_ctx, data, data_len) != 0 ||
+        mbedtls_sha256_finish(&sha_ctx, hash) != 0) 
+    {
+        mbedtls_sha256_free(&sha_ctx);
+        return false;
+    }
+    mbedtls_sha256_free(&sha_ctx);
+
+    mbedtls_pk_init(&pk_ctx);
+    if (mbedtls_pk_parse_public_key(&pk_ctx, pubkey_der, PUBKEY_DER_LEN) != 0) 
+    {
+        mbedtls_pk_free(&pk_ctx);
+        return false;
+    }
+
+    ret = mbedtls_pk_verify(&pk_ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash), sig, sig_len);
+    mbedtls_pk_free(&pk_ctx);
+    return (ret == 0);
+}
