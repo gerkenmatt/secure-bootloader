@@ -1,3 +1,8 @@
+/**
+ * @file logger.h
+ * @brief Logging interface for the STM32 bootloader project.
+ */
+
 #ifndef LOGGER_H
 #define LOGGER_H
 
@@ -8,6 +13,9 @@
 // Log Levels
 // -----------------------------------------------------------------------------
 
+/**
+ * @brief Log level enumeration.
+ */
 typedef enum {
     LOG_LEVEL_NONE,
     LOG_LEVEL_ERROR,
@@ -17,12 +25,10 @@ typedef enum {
 } log_level_t;
 
 // -----------------------------------------------------------------------------
-//  Configuration
+// Configuration
 // -----------------------------------------------------------------------------
 
-// Set the compile-time log level.
-// Messages with a level lower than this will not be compiled.
-#define LOG_LEVEL LOG_LEVEL_DEBUG
+#define LOG_LEVEL LOG_LEVEL_DEBUG ///< Compile-time log level
 
 // -----------------------------------------------------------------------------
 // Function Prototypes
@@ -33,6 +39,12 @@ typedef enum {
  */
 void logger_init(void);
 
+/**
+ * @brief Logs a formatted message at the specified log level.
+ * @param lvl Log level
+ * @param fmt Format string
+ * @param ... Variable arguments
+ */
 void logger_log(log_level_t lvl, const char *fmt, ...);
 
 // -----------------------------------------------------------------------------
@@ -43,6 +55,5 @@ void logger_log(log_level_t lvl, const char *fmt, ...);
 #define LOG_WARN(...)   logger_log(LOG_LEVEL_WARN,  __VA_ARGS__)
 #define LOG_INFO(...)   logger_log(LOG_LEVEL_INFO,  __VA_ARGS__)
 #define LOG_DEBUG(...)  logger_log(LOG_LEVEL_DEBUG, __VA_ARGS__)
-
 
 #endif // LOGGER_H

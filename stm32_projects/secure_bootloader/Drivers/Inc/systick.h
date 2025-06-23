@@ -3,6 +3,10 @@
 
 #include <stdint.h>
 
+/// -----------------------------------------------------------------------------
+/// Function Prototypes
+/// -----------------------------------------------------------------------------
+
 /**
  * @brief Initializes the SysTick timer for millisecond timing.
  * This function sets up the SysTick timer to generate an interrupt every 1 millisecond.

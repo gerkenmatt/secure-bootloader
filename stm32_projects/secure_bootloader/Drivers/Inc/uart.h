@@ -1,9 +1,12 @@
+/**
+ * @file uart.h
+ * @brief UART communication interface for STM32 bootloader.
+ */
 #ifndef UART_H
 #define UART_H
 
-#include <stdbool.h> 
+#include <stdbool.h>
 #include <stdint.h>
-
 
 // -----------------------------------------------------------------------------
 // Function Prototypes
@@ -16,36 +19,29 @@
 void uart_init(void);
 
 /**
- * @brief Sends a single character via UART.
- * @note  This is a blocking call for simplicity, robustness, and memory efficiency.
+ * @brief Sends a single character via UART (blocking).
  * @param ch The character to send.
  */
 void uart_putc(uint8_t ch);
 
 /**
- * @brief Tries to get a character from the UART receive buffer.
- * This function is NON-BLOCKING.
- *
+ * @brief Tries to get a character from the UART receive buffer (non-blocking).
  * @param data Pointer to a byte where the received character will be stored.
  * @return true if a character was successfully read, false if the buffer was empty.
  */
 bool uart_getc(uint8_t* data);
 
 /**
- * @brief Sends a null-terminated string via UART.
- * @note  This is a blocking call.
+ * @brief Sends a null-terminated string via UART (blocking).
  * @param str The string to send.
  */
 void uart_puts(const char *str);
 
 /**
  * @brief Sends a formatted string via UART, similar to printf.
- * @note  This is a blocking call. The formatted string is created in a
- * stack-allocated buffer, so be mindful of stack size and message length.
  * @param fmt The format string.
  * @param ... Variable arguments for the format string.
  */
 void uart_printf(const char *fmt, ...);
-
 
 #endif // UART_H

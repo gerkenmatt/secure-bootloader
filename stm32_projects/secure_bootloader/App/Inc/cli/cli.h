@@ -1,7 +1,11 @@
+/**
+ * @file cli.h
+ * @brief Command Line Interface (CLI) for STM32 bootloader.
+ */
 #ifndef CLI_H
 #define CLI_H
 
-#include <stdbool.h> 
+#include <stdbool.h>
 #include "bootloader.h"
 
 // -----------------------------------------------------------------------------

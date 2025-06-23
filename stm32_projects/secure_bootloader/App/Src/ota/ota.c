@@ -278,7 +278,7 @@ static void handle_ota_data(const ota_frame_t* frame)
         return;
     }
 
-    unlock_flash();
+    flash_prepare_for_write();
 
     flash_status_t status = program_flash(ota_session.flash_write_address, (uint32_t*)frame->data, frame->length);
 

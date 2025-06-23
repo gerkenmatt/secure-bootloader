@@ -1,3 +1,7 @@
+/**
+ * @file flash.h
+ * @brief Flash memory programming and erase interface for STM32 bootloader.
+ */
 #ifndef FLASH_H
 #define FLASH_H
 
@@ -8,6 +12,9 @@
 // Type Definitions
 // -----------------------------------------------------------------------------
 
+/**
+ * @brief Flash operation status codes.
+ */
 typedef enum 
 {
     FLASH_OK = 0,
@@ -24,37 +31,44 @@ typedef enum
 // Function Prototypes
 // -----------------------------------------------------------------------------
 
+/**
+ * @brief Programs a region of flash memory.
+ * @param addr Start address to program
+ * @param data Pointer to data to write
+ * @param length Number of bytes to write
+ * @return Status code
+ */
 flash_status_t program_flash(uint32_t addr, const uint32_t* data, uint32_t length);
 
-
-
 /**
- * Erases a range of flash sectors
- * 
+ * @brief Erases a range of flash sectors.
  * @param start_sector The first sector to erase
  * @param end_sector The last sector to erase
- * @param start_address The starting address of the range to erase
- * @param size The size of the range to erase
- * @return 
+ * @return Status code
  */
 flash_status_t erase_flash_sectors(uint8_t start_sector, uint8_t end_sector);
 
 /**
- * Unlocks the flash memory
+ * @brief Unlocks the flash memory for programming.
  */
 void unlock_flash(void);
 
 /**
- * Locks the flash memory after programming
+ * @brief Locks the flash memory after programming.
  */
 void lock_flash(void);
 
-
 /**
- * Clears any previous flash errors
+ * @brief Clears any flash error flags.
  */
 void clear_flash_errors(void);
 
+/**
+ * @brief Prepares the flash memory for writing.
+ * 
+ * This function unlocks the flash, clears any error flags,
+ * sets the programming size to 32 bits
+ */
 void flash_prepare_for_write(void);
 
 #endif // FLASH_H

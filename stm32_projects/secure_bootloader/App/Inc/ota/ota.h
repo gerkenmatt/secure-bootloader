@@ -1,3 +1,7 @@
+/**
+ * @file ota.h
+ * @brief OTA update protocol and firmware verification interface.
+ */
 #ifndef OTA_H
 #define OTA_H
 
@@ -8,24 +12,25 @@
 #include "mbedtls/pk.h"
 #include "mbedtls/error.h"
 
-/// Total size of fixed fields in OTA frame
-#define FRAME_TOTAL_LEN   10
+// -----------------------------------------------------------------------------
+// Constants and Macros
+// -----------------------------------------------------------------------------
 
-/// Size of sector 5 (128KB)
-#define SECTOR5_SIZE      (128 * 1024)
-
-#define SIG_MAX_LEN       512
+#define FRAME_TOTAL_LEN   10   ///< Total size of fixed fields in OTA frame
+#define SIG_MAX_LEN       512  ///< Maximum signature length
 
 // -----------------------------------------------------------------------------
 // Data Structures
 // -----------------------------------------------------------------------------
 
-/// Structure representing firmware metadata header
+/**
+ * @brief Structure representing firmware metadata header.
+ */
 typedef struct {
-    uint32_t fw_size;                    // Firmware size in bytes
-    uint32_t fw_crc;                     // CRC32 checksum of firmware
-    uint32_t version;                    // Firmware version number
-    uint32_t reserved;                   // Reserved for future use
+    uint32_t fw_size;    ///< Firmware size in bytes
+    uint32_t fw_crc;     ///< CRC32 checksum of firmware
+    uint32_t version;    ///< Firmware version number
+    uint32_t reserved;   ///< Reserved for future use
 } ota_header_info_t;
 
 // -----------------------------------------------------------------------------
@@ -37,7 +42,6 @@ typedef struct {
  * This function should be called when the bootloader enters the OTA state.
  */
 void ota_init(void);
-
 
 /**
  * @brief Processes the OTA data stream in a non-blocking manner.
@@ -59,8 +63,5 @@ void ota_reset_timeout(void);
  * @return true if verification is successful and config is written, false otherwise.
  */
 bool ota_finalize_and_verify(void);
-
-
-
 
 #endif // OTA_H

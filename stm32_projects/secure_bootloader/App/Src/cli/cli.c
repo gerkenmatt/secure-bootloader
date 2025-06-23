@@ -279,12 +279,7 @@ static void handle_erase_cmd(const char* cmd_arg)
     //     return;
     // }
 
-    unlock_flash();
-    clear_flash_errors();
-
-    // Configure flash access control and program size
-    FLASH->ACR |= (1 << 8) | (1 << 9);  // Enable instruction and data cache
-    FLASH->CR |= FLASH_CR_PSIZE_1;      // Set program size to 32-bit
+    flash_prepare_for_write();
 
     uart_printf("Erasing slot: %d\r\n", slot_to_erase);
 

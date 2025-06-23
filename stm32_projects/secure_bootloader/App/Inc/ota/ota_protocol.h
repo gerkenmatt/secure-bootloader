@@ -1,40 +1,51 @@
+/**
+ * @file ota_protocol.h
+ * @brief OTA protocol definitions and frame structures.
+ */
 #ifndef OTA_PROTOCOL_H
 #define OTA_PROTOCOL_H
 
 #include <stdint.h>
 #include <stdbool.h>
 
-// --- Protocol Constants (Moved from ota.h) ---
-/// OTA packet types
-#define PACKET_CMD        0x01
-#define PACKET_HEADER     0x02
-#define PACKET_DATA       0x03
-#define PACKET_RESP       0x04
-#define PACKET_SIG        0x05
+// -----------------------------------------------------------------------------
+// Protocol Constants
+// -----------------------------------------------------------------------------
 
-/// OTA command types
-#define CMD_START         0xA0
-#define CMD_END           0xA1
+#define PACKET_CMD        0x01  ///< Command packet
+#define PACKET_HEADER     0x02  ///< Header packet
+#define PACKET_DATA       0x03  ///< Data packet
+#define PACKET_RESP       0x04  ///< Response packet
+#define PACKET_SIG        0x05  ///< Signature packet
 
-/// OTA response types
-#define RESP_ACK          0xAB
-#define RESP_NACK         0xCD
+#define CMD_START         0xA0  ///< Start command
+#define CMD_END           0xA1  ///< End command
 
-/// OTA frame markers
-#define OTA_SOF           0xA5
-#define OTA_EOF           0xB6
+#define RESP_ACK          0xAB  ///< Acknowledge response
+#define RESP_NACK         0xCD  ///< Negative acknowledge response
 
-#define OTA_MAX_DATA        256
+#define OTA_SOF           0xA5  ///< Start of frame marker
+#define OTA_EOF           0xB6  ///< End of frame marker
 
-// --- Protocol Data Structures ---
+#define OTA_MAX_DATA      256   ///< Maximum OTA data payload
+
+// -----------------------------------------------------------------------------
+// Data Structures
+// -----------------------------------------------------------------------------
+
+/**
+ * @brief OTA frame structure.
+ */
 typedef struct {
-    uint8_t  type;
-    uint16_t length;
-    uint8_t  data[OTA_MAX_DATA];
-    uint32_t crc;
+    uint8_t  type;                ///< Packet type
+    uint16_t length;              ///< Payload length
+    uint8_t  data[OTA_MAX_DATA];  ///< Payload data
+    uint32_t crc;                 ///< CRC32 of payload
 } ota_frame_t;
 
-// --- Parser State Machine Context ---
+/**
+ * @brief OTA parser state machine states.
+ */
 typedef enum {
     OTA_PARSE_STATE_WAIT_SOF,
     OTA_PARSE_STATE_GET_TYPE,
