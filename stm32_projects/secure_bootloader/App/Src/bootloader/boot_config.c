@@ -32,12 +32,12 @@ void init_bootloader_config(void)
 
     if (!write_boot_config(&cfg))
     {
-        LOG_ERROR("Failed to write initial bootloader configuration!\r\n");
+        LOG_ERROR("Failed to write initial bootloader configuration!");
         bootloader_set_state(BL_STATE_ERROR);
     }
     else
     {
-        LOG_INFO("Bootloader configuration initialized successfully.\r\n");
+        LOG_INFO("Bootloader configuration initialized successfully.");
     }
 }
 
@@ -53,14 +53,14 @@ bool write_boot_config(const bootloader_config_t* p_new_config)
     if (erase_flash_sectors(CONFIG_SECTOR, CONFIG_SECTOR) != FLASH_OK) 
     
     {
-        LOG_ERROR("Failed to erase config sector!\r\n");
+        LOG_ERROR("Failed to erase config sector!");
         goto cleanup;
     }
 
     // Write the new config struct to flash
     if (program_flash(CONFIG_ADDR, (const uint32_t*)p_new_config, sizeof(bootloader_config_t)) != FLASH_OK) 
     {
-        LOG_ERROR("Failed to write new config to flash!\r\n");
+        LOG_ERROR("Failed to write new config to flash!");
         goto cleanup;
     }
 

@@ -231,7 +231,7 @@ static void execute_command(const char* cmd_line, const cli_command_t* command_t
         }
     }
 
-    uart_puts("Unknown command. Type 'help'.\r\n");
+    uart_puts("Unknown command. Type 'help'.");
 }
 
 static bool parse_slot_arg(const char* arg, slot_index_t* slot)
@@ -258,13 +258,13 @@ static bool parse_slot_arg(const char* arg, slot_index_t* slot)
 
 static void handle_run_cmd(const char* args) 
 {
-    LOG_INFO("'run' command received. Attempting to boot active application...\r\n");
+    LOG_INFO("'run' command received. Attempting to boot active application...");
     bootloader_jump_to_active_application();
 }
 
 static void handle_update_cmd(const char* args) 
 {
-    LOG_INFO("Entering OTA mode...\r\n");
+    LOG_INFO("Entering OTA mode...");
     ota_reset_timeout();
     bootloader_set_state(BL_STATE_RECEIVING);
 }
@@ -290,7 +290,7 @@ static void handle_activate_cmd(const char* args)
     const bootloader_config_t* cfg = read_boot_config();
     if (!cfg->slot[slot_to_activate].is_valid) 
     {
-        LOG_ERROR("Cannot activate an invalid slot.\r\n");
+        LOG_ERROR("Cannot activate an invalid slot.");
         return;
     }
 
@@ -299,9 +299,9 @@ static void handle_activate_cmd(const char* args)
     new_cfg.active_slot = slot_to_activate;
     
     if (write_boot_config(&new_cfg)) 
-        LOG_INFO("Active slot switched to: %d\r\n", slot_to_activate);
+        LOG_INFO("Active slot switched to: %d", slot_to_activate);
     else 
-        LOG_ERROR("Failed to update boot config for slot activation.\r\n");
+        LOG_ERROR("Failed to update boot config for slot activation.");
 
 }
 
@@ -346,17 +346,17 @@ static void handle_erase_cmd(const char* args)
     const bootloader_config_t* cfg = read_boot_config();
     if (slot_to_erase == cfg->active_slot) 
     {
-        LOG_ERROR("Cannot erase the currently active slot.\r\n");
+        LOG_ERROR("Cannot erase the currently active slot.");
         return;
     }
 
-    LOG_INFO("Erasing slot: %d\r\n", slot_to_erase);
+    LOG_INFO("Erasing slot: %d", slot_to_erase);
     flash_prepare_for_write();
     uint8_t sector_start = (slot_to_erase == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
 
     if (erase_flash_sectors(sector_start, sector_start + SLOT_SECTOR_COUNT - 1) == FLASH_OK)
     {
-        LOG_INFO("Successfully erased slot flash.\r\n");
+        LOG_INFO("Successfully erased slot flash.");
         
         bootloader_config_t new_cfg;
         memcpy(&new_cfg, cfg, sizeof(bootloader_config_t));
@@ -367,12 +367,12 @@ static void handle_erase_cmd(const char* args)
         new_cfg.slot[slot_to_erase].fw_crc = 0xFFFFFFFF;
         
         if (write_boot_config(&new_cfg)) 
-             LOG_INFO("Boot config updated to mark slot as invalid.\r\n");
+             LOG_INFO("Boot config updated to mark slot as invalid.");
         else 
-             LOG_ERROR("Failed to update boot config after erase.\r\n");
+             LOG_ERROR("Failed to update boot config after erase.");
     }
     else 
-        LOG_ERROR("Failed to erase slot flash.\r\n");
+        LOG_ERROR("Failed to erase slot flash.");
     
     lock_flash();
 }

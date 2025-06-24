@@ -125,7 +125,7 @@ void ota_process_non_blocking(void)
                 case PACKET_SIG:    handle_ota_signature(&received_frame); break;
                 default:
                     ota_send_response(RESP_NACK);
-                    LOG_ERROR("Unknown packet type\r\n");
+                    LOG_ERROR("Unknown packet type");
                     break;
             }
         }
@@ -139,7 +139,7 @@ void handle_ota_command(const ota_frame_t* p_frame)
     // Validate frame has at least 1 byte for command
     if (p_frame->length < 1)
     {
-        LOG_ERROR("Command packet has no payload\r\n");
+        LOG_ERROR("Command packet has no payload");
         ota_send_response(RESP_NACK);
         return;
     }
@@ -150,35 +150,35 @@ void handle_ota_command(const ota_frame_t* p_frame)
             process_cmd_start();
             break;
         case CMD_END:
-            LOG_INFO("CMD_END received. Proceeding to verification.\r\n");
+            LOG_INFO("CMD_END received. Proceeding to verification.");
             ota_send_response(RESP_ACK);
             bootloader_set_state(BL_STATE_VERIFY);
             break;
         default:
             ota_send_response(RESP_NACK);
-            LOG_ERROR("Unknown CMD: 0x%08X\r\n", p_frame->data[0]);
+            LOG_ERROR("Unknown CMD: 0x%08X", p_frame->data[0]);
             break;
     }
 }
 
 bool ota_finalize_and_verify(void) 
 {
-    LOG_INFO("Finalizing update...\r\n");
+    LOG_INFO("Finalizing update...");
     uint32_t inactive_slot_addr = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
 
     // 1. Verify the signature of the newly downloaded firmware
-    LOG_INFO("Verifying signature...\r\n");
+    LOG_INFO("Verifying signature...");
     if (!ota_crypto_verify_signature(
             (uint8_t*)inactive_slot_addr,
             ota_session.header.fw_size,
             ota_session.signature,
             ota_session.signature_length))
     {
-        LOG_ERROR("Signature verification FAILED. Aborting update.\r\n");
+        LOG_ERROR("Signature verification FAILED. Aborting update.");
         ota_send_response(RESP_NACK);
         return false;
     }
-    LOG_INFO("Signature verified\r\n");
+    LOG_INFO("Signature verified");
 
     // 2. Prepare the new configuration with the atomic swap
     bootloader_config_t new_cfg;
@@ -192,14 +192,14 @@ bool ota_finalize_and_verify(void)
     new_cfg.active_slot = ota_session.inactive_slot_index;
 
     // 3. Write the new configuration back to flash
-    LOG_INFO("Writing boot config to activate slot\r\n");
+    LOG_INFO("Writing boot config to activate slot");
     if (!write_boot_config(&new_cfg))
     {
         ota_send_response(RESP_NACK);
-        LOG_ERROR("Failed to write boot config\r\n");
+        LOG_ERROR("Failed to write boot config");
         return false;
     }
-    LOG_INFO("Boot config written\r\n");
+    LOG_INFO("Boot config written");
     ota_send_response(RESP_ACK);
     return true;
 }
@@ -228,7 +228,7 @@ static void ota_check_timeout(void)
 {
     if (ota_last_byte_timestamp != 0 && (get_systick() - ota_last_byte_timestamp) > OTA_TIMEOUT_MS)
     {
-        LOG_ERROR("OTA session timed out.\r\n");
+        LOG_ERROR("OTA session timed out.");
         bootloader_set_state(BL_STATE_ERROR);
         ota_last_byte_timestamp = 0;
     }
@@ -248,7 +248,7 @@ static bool process_cmd_start(void)
     if (status != FLASH_OK)
     {
         ota_send_response(RESP_NACK);
-        LOG_ERROR("Flash erase failed\r\n");
+        LOG_ERROR("Flash erase failed");
         bootloader_set_state(BL_STATE_ERROR);
         lock_flash();
         return false;
@@ -263,7 +263,7 @@ static void handle_ota_header(const ota_frame_t* p_frame)
     if (p_frame->length != sizeof(ota_header_info_t))
     {
         ota_send_response(RESP_NACK);
-        LOG_ERROR("Invalid header length\r\n");
+        LOG_ERROR("Invalid header length");
         return;
     }
 
@@ -273,7 +273,7 @@ static void handle_ota_header(const ota_frame_t* p_frame)
     // Sanity check firmware size against slot size
     if (ota_session.header.fw_size > SLOT_SIZE) 
     {
-        LOG_ERROR("Firmware size exceeds slot size\r\n");
+        LOG_ERROR("Firmware size exceeds slot size");
         ota_send_response(RESP_NACK);
         bootloader_set_state(BL_STATE_ERROR);
         return;
@@ -286,7 +286,7 @@ static void handle_ota_data(const ota_frame_t* p_frame)
     if (p_frame->length == 0 || p_frame->length > OTA_MAX_DATA)
     {
         ota_send_response(RESP_NACK);
-        LOG_ERROR("Invalid data length\r\n");
+        LOG_ERROR("Invalid data length");
         return;
     }
     flash_prepare_for_write();
@@ -297,10 +297,10 @@ static void handle_ota_data(const ota_frame_t* p_frame)
         LOG_ERROR("Flash write failed: ");
         switch(status)
         {
-            case FLASH_ERROR_ALIGNMENT: LOG_ERROR("Alignment Error\r\n"); break;
-            case FLASH_ERROR:           LOG_ERROR("Programming Error\r\n"); break;
-            case FLASH_ERROR_VERIFY:    LOG_ERROR("Programming Verification Error\r\n"); break;
-            default:                    LOG_ERROR("Unknown Error\r\n"); break;
+            case FLASH_ERROR_ALIGNMENT: LOG_ERROR("Alignment Error"); break;
+            case FLASH_ERROR:           LOG_ERROR("Programming Error"); break;
+            case FLASH_ERROR_VERIFY:    LOG_ERROR("Programming Verification Error"); break;
+            default:                    LOG_ERROR("Unknown Error"); break;
         }
         bootloader_set_state(BL_STATE_ERROR);
     }
@@ -318,7 +318,7 @@ static void handle_ota_signature(const ota_frame_t* p_frame)
     if (p_frame->length > SIG_MAX_LEN) 
     {
         ota_send_response(RESP_NACK);
-        LOG_ERROR("Signature too large\r\n");
+        LOG_ERROR("Signature too large");
         return;
     }
     // copy it into RAM

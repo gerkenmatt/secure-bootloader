@@ -50,7 +50,7 @@ void bootloader_init(void)
     if (config->magic != BOOT_CONFIG_MAGIC) 
     {
         // Initialize config defaults and write to flash
-        LOG_INFO("***Initializing bootloader configuration***\r\n");
+        LOG_INFO("***Initializing bootloader configuration***");
         init_bootloader_config();
     }
 
@@ -73,7 +73,7 @@ void bootloader_set_state(bootloader_state_t new_state)
     
     if (new_state == BL_STATE_RECEIVING) 
     {
-        LOG_INFO("Entering OTA mode. Initializing OTA module...\r\n");
+        LOG_INFO("Entering OTA mode. Initializing OTA module...");
         ota_init();
     }
     current_state = new_state;
@@ -93,15 +93,15 @@ void bootloader_run_state_machine(void)
             break;
 
         case BL_STATE_VERIFY:
-            LOG_INFO("Verifying received firmware...\r\n");
+            LOG_INFO("Verifying received firmware...");
             if (ota_finalize_and_verify()) 
             {
-                LOG_INFO("Verification successful. Rebooting to new firmware.\r\n");
+                LOG_INFO("Verification successful. Rebooting to new firmware.");
                 NVIC_SystemReset();
             } 
             else 
             {
-                LOG_ERROR("Verification FAILED. Entering error state.\r\n");
+                LOG_ERROR("Verification FAILED. Entering error state.");
                 bootloader_set_state(BL_STATE_ERROR);
             }
             break;
@@ -113,7 +113,7 @@ void bootloader_run_state_machine(void)
             if (!error_indicated) 
             {
                 GPIOB->ODR |= (1UL << 14); // Set red LED
-                LOG_ERROR("\r\n!!! An error occurred. Entering recovery mode. Type 'help'. !!!\r\n");
+                LOG_ERROR("\r\n!!! An error occurred. Entering recovery mode. Type 'help'. !!!");
                 error_indicated = true;
             }
             cli_process_input(current_state);
@@ -137,7 +137,7 @@ void bootloader_jump_to_active_application(void)
     // Perform all logic checks first before writing to flash.
     if (current_slot >= NUM_SLOTS || !new_cfg.slot[current_slot].is_valid)
     {
-        LOG_ERROR("Active slot (%d) is invalid. Halting.\r\n", current_slot);
+        LOG_ERROR("Active slot (%d) is invalid. Halting.", current_slot);
         bootloader_set_state(BL_STATE_ERROR);
         return;
     }
@@ -145,7 +145,7 @@ void bootloader_jump_to_active_application(void)
     // Check for rollback condition
     if (new_cfg.slot[current_slot].boot_attempts_remaining == 0)
     {
-        LOG_ERROR("!!! No boot attempts left for slot %d. Attempting rollback. !!!\r\n", current_slot);
+        LOG_ERROR("!!! No boot attempts left for slot %d. Attempting rollback. !!!", current_slot);
         slot_index_t fallback_slot = (current_slot == SLOTA) ? SLOTB : SLOTA;
 
         if (new_cfg.slot[fallback_slot].is_valid)
@@ -155,14 +155,14 @@ void bootloader_jump_to_active_application(void)
             config_changed = true;
             
             // Write the single change and reboot to try the new config cleanly.
-            LOG_INFO("Rolling back to slot %d. Writing new config and rebooting.\r\n", fallback_slot);
+            LOG_INFO("Rolling back to slot %d. Writing new config and rebooting.", fallback_slot);
             write_boot_config(&new_cfg);
             NVIC_SystemReset();
             return; // Should not be reached
         }
         else
         {
-            LOG_ERROR("!!! Fallback slot %d is not valid. Cannot roll back. Halting. !!!\r\n", fallback_slot);
+            LOG_ERROR("!!! Fallback slot %d is not valid. Cannot roll back. Halting. !!!", fallback_slot);
             bootloader_set_state(BL_STATE_ERROR);
             return;
         }
@@ -179,7 +179,7 @@ void bootloader_jump_to_active_application(void)
     {
         if (!write_boot_config(&new_cfg))
         {
-            LOG_ERROR("Failed to write updated boot config. Halting.\r\n");
+            LOG_ERROR("Failed to write updated boot config. Halting.");
             bootloader_set_state(BL_STATE_ERROR);
             return;
         }
@@ -192,36 +192,36 @@ void bootloader_jump_to_active_application(void)
 
     if (!verify_crc(jump_address, active_slot_meta->fw_size, active_slot_meta->fw_crc))
     {
-        LOG_ERROR("CRC check failed for active slot. Rebooting.\r\n");
+        LOG_ERROR("CRC check failed for active slot. Rebooting.");
         // The boot attempt was already consumed. The next boot will either try again or roll back.
         NVIC_SystemReset();
         return; // Should not be reached
     }
 
-    LOG_INFO("Boot counter decremented. CRC OK. Jumping to application in slot %d.\r\n", current_slot);
+    LOG_INFO("Boot counter decremented. CRC OK. Jumping to application in slot %d.", current_slot);
     bootloader_jump_to(jump_address);
 }
 
 void validate_boot_environment(void)
 {
-    LOG_INFO("Validating boot environment...\r\n");
+    LOG_INFO("Validating boot environment...");
 
     // Make sure the vector table is remapped to the correct ITCM alias
     if ((SCB->VTOR & 0xFFF00000) != BOOTLOADER_START_ALIAS)
     {
-        LOG_ERROR("\tError: Unexpected VTOR address.\r\n");
+        LOG_ERROR("\tError: Unexpected VTOR address.");
         while (1) { for (volatile int i = 0; i < 50000; i++); }
     }
-    LOG_INFO("\tVTOR configuration OK\r\n");
+    LOG_INFO("\tVTOR configuration OK");
 
     // Make sure aliasing between ITCM and AXI flash matches
     if (bootloader_verify_memory_aliasing() != BL_OK)
     {
-        LOG_ERROR("\tError: Memory aliasing failed.\r\n");
+        LOG_ERROR("\tError: Memory aliasing failed.");
         current_state = BL_STATE_ERROR;
         return;
     }
-    LOG_INFO("\tMemory aliasing verified\r\n");
+    LOG_INFO("\tMemory aliasing verified");
 }
 
 
