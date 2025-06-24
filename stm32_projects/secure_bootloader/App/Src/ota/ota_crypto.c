@@ -1,17 +1,25 @@
 #include "ota_crypto.h"
+#include "uart.h"
+
 #include "mbedtls/pk.h"
 #include "mbedtls/md.h"
 #include "mbedtls/error.h"
 #include "mbedtls/sha256.h"
-#include "uart.h"
 #include "mbedtls/platform.h"  
 
+// -----------------------------------------------------------------------------
+// Module-Private Constants
+// -----------------------------------------------------------------------------
 
 #define PUBKEY_DER_LEN 91
 
+// -----------------------------------------------------------------------------
+// Module-Private Data (Static Globals)
+// -----------------------------------------------------------------------------
+
 // --- Public Key ---
 // The public key is embedded in the bootloader to verify firmware signatures.
-// For production, this key should be protected against tampering.
+// TODO: this key should be protected against tampering.
 static const unsigned char pubkey_der[] = {
   0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02,
   0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03,
@@ -23,7 +31,11 @@ static const unsigned char pubkey_der[] = {
   0x29, 0x46, 0x41, 0xef, 0x57, 0x38, 0x74
 };
 
-bool ota_crypto_verify_signature(const uint8_t *data, uint32_t data_len, const uint8_t *sig, uint16_t sig_len) 
+// -----------------------------------------------------------------------------
+// Public Function Implementations
+// -----------------------------------------------------------------------------
+
+bool ota_crypto_verify_signature(const uint8_t *p_data, uint32_t data_len, const uint8_t *p_sig, uint16_t sig_len) 
 {
     int ret;
     uint8_t hash[32];
@@ -32,7 +44,7 @@ bool ota_crypto_verify_signature(const uint8_t *data, uint32_t data_len, const u
 
     mbedtls_sha256_init(&sha_ctx);
     if (mbedtls_sha256_starts(&sha_ctx, 0) != 0 ||
-        mbedtls_sha256_update(&sha_ctx, data, data_len) != 0 ||
+        mbedtls_sha256_update(&sha_ctx, p_data, data_len) != 0 ||
         mbedtls_sha256_finish(&sha_ctx, hash) != 0) 
     {
         mbedtls_sha256_free(&sha_ctx);
@@ -47,7 +59,7 @@ bool ota_crypto_verify_signature(const uint8_t *data, uint32_t data_len, const u
         return false;
     }
 
-    ret = mbedtls_pk_verify(&pk_ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash), sig, sig_len);
+    ret = mbedtls_pk_verify(&pk_ctx, MBEDTLS_MD_SHA256, hash, sizeof(hash), p_sig, sig_len);
     mbedtls_pk_free(&pk_ctx);
     return (ret == 0);
 }
@@ -55,9 +67,9 @@ bool ota_crypto_verify_signature(const uint8_t *data, uint32_t data_len, const u
 /* A simple, volatile‐pointer loop that the compiler
  * cannot optimize away, and which does not rely on
  * any function pointers or libc. */
-void mbedtls_platform_zeroize( void *buf, size_t len )
+void mbedtls_platform_zeroize( void *p_buf, size_t len )
 {
-    volatile unsigned char *p = (volatile unsigned char*) buf;
+    volatile unsigned char *p = (volatile unsigned char*) p_buf;
     while( len-- )
         *p++ = 0;
 }

@@ -1,10 +1,14 @@
 #include "boot_config.h"
 #include "bootloader.h"
 #include "flash.h"
-#include <string.h> 
-#include "ota.h" //TODO: shouldnt have to include this
-#include "uart.h"
 #include "logger.h"
+#include <string.h> 
+
+
+// -----------------------------------------------------------------------------
+// Public Function Implementations
+// -----------------------------------------------------------------------------
+
 
 void init_bootloader_config(void) 
 {
@@ -37,10 +41,9 @@ void init_bootloader_config(void)
     }
 }
 
-
-bool write_boot_config(const bootloader_config_t* new_config) 
+bool write_boot_config(const bootloader_config_t* p_new_config) 
 {
-    if (!new_config) return false;
+    if (!p_new_config) return false;
 
     flash_prepare_for_write();
 
@@ -54,7 +57,7 @@ bool write_boot_config(const bootloader_config_t* new_config)
     }
 
     // Write the new config struct to flash
-    if (program_flash(CONFIG_ADDR, (const uint32_t*)new_config, sizeof(bootloader_config_t)) != FLASH_OK) 
+    if (program_flash(CONFIG_ADDR, (const uint32_t*)p_new_config, sizeof(bootloader_config_t)) != FLASH_OK) 
     {
         LOG_ERROR("Failed to write new config to flash!\r\n");
         lock_flash();

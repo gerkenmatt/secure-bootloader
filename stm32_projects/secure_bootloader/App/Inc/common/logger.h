@@ -13,10 +13,10 @@
 // Constants and Macros
 // -----------------------------------------------------------------------------
 
-#define LOG_ERROR(...)  logger_log(LOG_LEVEL_ERROR, __VA_ARGS__)
-#define LOG_WARN(...)   logger_log(LOG_LEVEL_WARN,  __VA_ARGS__)
-#define LOG_INFO(...)   logger_log(LOG_LEVEL_INFO,  __VA_ARGS__)
-#define LOG_DEBUG(...)  logger_log(LOG_LEVEL_DEBUG, __VA_ARGS__)
+#define LOG_ERROR(...)  log_message(LOG_LEVEL_ERROR, __VA_ARGS__)
+#define LOG_WARN(...)   log_message(LOG_LEVEL_WARN,  __VA_ARGS__)
+#define LOG_INFO(...)   log_message(LOG_LEVEL_INFO,  __VA_ARGS__)
+#define LOG_DEBUG(...)  log_message(LOG_LEVEL_DEBUG, __VA_ARGS__)
 
 #define LOG_LEVEL LOG_LEVEL_DEBUG ///< Compile-time log level
 
@@ -39,10 +39,6 @@ typedef enum {
 // Public Function Prototypes
 // -----------------------------------------------------------------------------
 
-/**
- * @brief Initializes the logger.
- */
-void logger_init(void);
 
 /**
  * @brief Logs a formatted message at the specified log level.
@@ -50,6 +46,6 @@ void logger_init(void);
  * @param fmt Format string
  * @param ... Variable arguments
  */
-void logger_log(log_level_t lvl, const char *fmt, ...);
+void log_message(log_level_t lvl, const char *fmt, ...);
 
 #endif // LOGGER_H

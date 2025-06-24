@@ -1,25 +1,67 @@
-#include <stdint.h>
-#include <stdbool.h>
-#include <string.h>
+/**
+ * @file bootloader.c
+ * @brief Implementation of the bootloader core logic and state management.
+ */
 #include "bootloader.h"
-#include "ota.h"
-#include "stm32f767xx.h"
-#include "uart.h"
-#include "utilities.h"
-#include "flash.h"
-#include "mbedtls/platform.h"
-#include "cli.h"
+
+// Other project-specific includes.
 #include "boot_config.h"
+#include "cli.h"
+#include "flash.h"
 #include "logger.h"
+#include "ota.h"
+#include "utilities.h"
 
+#include "stm32f767xx.h"
+#include "mbedtls/platform.h"
 
-// --- Static State ---
+#include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
+
+// -----------------------------------------------------------------------------
+// Module-Private Data (Static Globals)
+// -----------------------------------------------------------------------------
+
 static bootloader_state_t current_state = BL_STATE_IDLE;
 
-// --- Function Prototypes ---
+// -----------------------------------------------------------------------------
+// Static Function Prototypes
+// -----------------------------------------------------------------------------
+
+/**
+ * @brief Verifies memory aliasing between AXI and ITCM regions.
+ * @return BL_OK if aliasing verified, BL_ERROR_INVALID_BOOT_MODE if mismatch.
+ */
+static bootloader_status_t bootloader_verify_memory_aliasing(void);
+
+/**
+ * @brief Jumps to the specified application address.   
+ * @param app_address The address of the application to jump to.
+ */
 static void bootloader_jump_to(uint32_t app_address);
 
-// --- Public Functions ---
+// -----------------------------------------------------------------------------
+// Public Function Implementations
+// -----------------------------------------------------------------------------
+
+void bootloader_init(void)
+{
+    // Initialize configuration if not already set
+    const bootloader_config_t* config = read_boot_config();
+    if (config->magic != BOOT_CONFIG_MAGIC) 
+    {
+        // Initialize config defaults and write to flash
+        LOG_INFO("***Initializing bootloader configuration***\r\n");
+        init_bootloader_config();
+    }
+
+    // Needed for mbedTLS memory allocation
+    mbedtls_platform_set_calloc_free(calloc, free);
+
+    // Set state to READY
+    current_state = BL_STATE_READY;
+}
 
 bootloader_state_t bootloader_get_state(void) 
 {
@@ -31,31 +73,12 @@ void bootloader_set_state(bootloader_state_t new_state)
     if (current_state == new_state) 
         return; // No change
     
-
     if (new_state == BL_STATE_RECEIVING) 
     {
         LOG_INFO("Entering OTA mode. Initializing OTA module...\r\n");
         ota_init();
     }
-    
     current_state = new_state;
-}
-
-void bootloader_init(void)
-{
-    // Initialize configuration if not already set
-    const bootloader_config_t* config = read_boot_config();
-    if (config->magic != BOOT_CONFIG_MAGIC) {
-        // Initialize config defaults and write to flash
-        LOG_INFO("***Initializing bootloader configuration***\r\n");
-        init_bootloader_config();
-    }
-
-    // Needed for mbedTLS memory allocation
-    mbedtls_platform_set_calloc_free(calloc, free);
-
-    // Set state to READY
-    current_state = BL_STATE_READY;
 }
 
 void bootloader_run_state_machine(void)
@@ -84,7 +107,6 @@ void bootloader_run_state_machine(void)
                 bootloader_set_state(BL_STATE_ERROR);
             }
             break;
-            break;
 
         case BL_STATE_ERROR:
         {
@@ -101,7 +123,6 @@ void bootloader_run_state_machine(void)
         }
 
         default:
-            // Do nothing
             break;
     }
 }
@@ -182,6 +203,46 @@ void bootloader_jump_to_active_application(void)
     bootloader_jump_to(jump_address);
 }
 
+void validate_boot_environment(void)
+{
+    LOG_INFO("Validating boot environment...\r\n");
+
+    // Make sure the vector table is remapped to the correct ITCM alias
+    if ((SCB->VTOR & 0xFFF00000) != BOOTLOADER_START_ALIAS)
+    {
+        LOG_ERROR("\tError: Unexpected VTOR address.\r\n");
+        while (1) { for (volatile int i = 0; i < 50000; i++); }
+    }
+    LOG_INFO("\tVTOR configuration OK\r\n");
+
+    // Make sure aliasing between ITCM and AXI flash matches
+    if (bootloader_verify_memory_aliasing() != BL_OK)
+    {
+        LOG_ERROR("\tError: Memory aliasing failed.\r\n");
+        current_state = BL_STATE_ERROR;
+        return;
+    }
+    LOG_INFO("\tMemory aliasing verified\r\n");
+}
+
+
+// -----------------------------------------------------------------------------
+// Static Function Implementations
+// -----------------------------------------------------------------------------
+
+static bootloader_status_t bootloader_verify_memory_aliasing(void)
+{
+    uint32_t *flash = (uint32_t *)BOOTLOADER_START_PHYS;
+    uint32_t *itcm  = (uint32_t *)BOOTLOADER_START_ALIAS;
+
+    for (int i = 0; i < 256; i++)
+    {
+        if (flash[i] != itcm[i])
+            return BL_ERROR_INVALID_BOOT_MODE;
+    }
+    return BL_OK;
+}
+
 static void bootloader_jump_to(uint32_t app_address) 
 {
     LOG_INFO("Jumping to application at: 0x%08X\r\n"); 
@@ -216,40 +277,4 @@ static void bootloader_jump_to(uint32_t app_address)
 
     // This part should never be reached
     while(1);
-}
-
-bootloader_status_t bootloader_verify_memory_aliasing(void)
-{
-    uint32_t *flash = (uint32_t *)BOOTLOADER_START_PHYS;
-    uint32_t *itcm  = (uint32_t *)BOOTLOADER_START_ALIAS;
-
-    for (int i = 0; i < 256; i++)
-    {
-        if (flash[i] != itcm[i])
-            return BL_ERROR_INVALID_BOOT_MODE;
-    }
-    return BL_OK;
-}
-
-
-void validate_boot_environment(void)
-{
-    LOG_INFO("Validating boot environment...\r\n");
-
-    // Make sure the vector table is remapped to the correct ITCM alias
-    if ((SCB->VTOR & 0xFFF00000) != BOOTLOADER_START_ALIAS)
-    {
-        LOG_ERROR("\tError: Unexpected VTOR address.\r\n");
-        while (1) { for (volatile int i = 0; i < 50000; i++); }
-    }
-    LOG_INFO("\tVTOR configuration OK\r\n");
-
-    // Make sure aliasing between ITCM and AXI flash matches
-    if (bootloader_verify_memory_aliasing() != BL_OK)
-    {
-        LOG_ERROR("\tError: Memory aliasing failed.\r\n");
-        current_state = BL_STATE_ERROR;
-        return;
-    }
-    LOG_INFO("\tMemory aliasing verified\r\n");
 }

@@ -1,5 +1,4 @@
-#include <stdbool.h>
-#include <string.h>
+
 #include "bootloader.h"
 #include "ota.h"
 #include "stm32f767xx.h"
@@ -7,17 +6,33 @@
 #include "systick.h"
 #include "logger.h"
 
-// --- Function Prototypes ---
+#include <stdbool.h>
+#include <string.h>
+
+// -----------------------------------------------------------------------------
+// Static Function Prototypes
+// -----------------------------------------------------------------------------
+
+/**
+ * @brief Initializes the system hardware and peripherals.
+ */
 static void system_init(void);
+
+/**
+ * @brief Logs bootloader state transitions to UART.
+ * @param new_state New bootloader state being transitioned to
+ */
 static void log_state_transition(bootloader_state_t new_state);
 
 
-// --- Main Entry Point ---
+// -----------------------------------------------------------------------------
+// Main Function
+// -----------------------------------------------------------------------------
+
 int main(void)
 {
-
     system_init();               // Basic chip setup: FPU, cache, GPIO, etc.
-    uart_init();                // Set up USART3 for serial debug output
+    uart_init();                 // Set up USART6 for serial communication
     __enable_irq();
     uart_puts("\n\nBootloader started.\r\n");
 
@@ -34,12 +49,10 @@ int main(void)
     return 0;
 }
 
-/**
- * Logs bootloader state transitions to UART
- * Prints human readable state description
- *
- * @param new_state New bootloader state being transitioned to
- */
+// -----------------------------------------------------------------------------
+// Static Function Implementations
+// -----------------------------------------------------------------------------
+
 static void log_state_transition(bootloader_state_t new_state) 
 {
     switch (new_state) 
@@ -52,10 +65,6 @@ static void log_state_transition(bootloader_state_t new_state)
     }
 }
 
-/**
- * Initializes system hardware and peripherals
- * Configures FPU, caches, flash latency, GPIO
- */
 static void system_init(void)
 {
 

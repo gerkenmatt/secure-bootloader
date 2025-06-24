@@ -3,7 +3,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-// --- Private Driver Configuration ---
+// -----------------------------------------------------------------------------
+// Module-Private Constants
+// -----------------------------------------------------------------------------
+
 #define UART_PERIPH         USART6
 #define UART_IRQn           USART6_IRQn
 #define UART_IRQHandler     USART6_IRQHandler
@@ -28,21 +31,42 @@
 #define UART_RX_BUFFER_SIZE 256 // Power of 2 for efficient '%' -> '&' optimization
 #define UART_TX_BUFFER_SIZE 256 // Buffer for uart_printf
 
-// --- Type Definitions ---
+// -----------------------------------------------------------------------------
+// Type Definitions
+// -----------------------------------------------------------------------------
+
 typedef struct {
     uint8_t buffer[UART_RX_BUFFER_SIZE];
     volatile uint16_t head; // Written by ISR
     volatile uint16_t tail; // Read by main application
 } ring_buffer_t;
 
-// --- Static Variables ---
+// -----------------------------------------------------------------------------
+// Module-Private Data (Static Globals)
+// -----------------------------------------------------------------------------
+
 static ring_buffer_t rx_buffer = {0};
 
-// --- Function Prototypes ---
+// -----------------------------------------------------------------------------
+// Static Function Prototypes
+// -----------------------------------------------------------------------------
+
+/**
+ * @brief Writes a byte to the ring buffer.
+ * @param data The byte to write.
+ */
 static void ring_buffer_write(uint8_t data);
+
+/**
+ * @brief Reads a byte from the ring buffer.
+ * @param data Pointer to where the read byte will be stored.
+ * @return true if a byte was read, false if the buffer was empty.
+ */
 static bool ring_buffer_read(uint8_t* data);
 
-// --- Public Function Implementations ---
+// -----------------------------------------------------------------------------
+// Public Function Implementations
+// -----------------------------------------------------------------------------
 
 void uart_init(void) 
 {
@@ -109,13 +133,6 @@ void uart_puts(const char *str)
         uart_putc(*str++);
 }
 
-/**
- * @brief Sends a formatted string via UART.
- * @note This function uses a fixed-size buffer on the stack. Ensure the
- * final formatted string does not exceed UART_TX_BUFFER_SIZE.
- * @param fmt The format string (e.g., "Value: %d\r\n").
- * @param ... The arguments for the format string.
- */
 void uart_printf(const char *fmt, ...)
 {
     char buf[UART_TX_BUFFER_SIZE];
@@ -135,9 +152,10 @@ void uart_printf(const char *fmt, ...)
 }
 
 
-// --- Ring Buffer Implementation ---
+// -----------------------------------------------------------------------------
+// Static Function Implementations
+// -----------------------------------------------------------------------------
 
-// Called from ISR to write data
 static void ring_buffer_write(uint8_t data)
 {
     uint16_t next_head = (rx_buffer.head + 1) % UART_RX_BUFFER_SIZE;
@@ -150,7 +168,6 @@ static void ring_buffer_write(uint8_t data)
     //TODO: add error handling for buffer overflow
 }
 
-// Called from main application to read data
 static bool ring_buffer_read(uint8_t* data) 
 {
     if (rx_buffer.head == rx_buffer.tail) 
@@ -163,6 +180,9 @@ static bool ring_buffer_read(uint8_t* data)
     return true;
 }
 
+// -----------------------------------------------------------------------------
+// Interrupt Handler 
+// -----------------------------------------------------------------------------
 
 void USART6_IRQHandler(void) 
 {

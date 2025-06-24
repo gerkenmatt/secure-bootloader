@@ -3,49 +3,87 @@
 #include "ota.h"
 #include "stm32f767xx.h"
 #include "uart.h"
-#include "utilities.h"
 #include "flash.h"
-#include <string.h> 
-#include <stdint.h>
-#include <stdlib.h>
 #include "boot_config.h"
 #include "logger.h"
 
+#include <string.h> 
+#include <stdint.h>
+#include <stdlib.h>
+
+
+// -----------------------------------------------------------------------------
+// Type Definitions
+// -----------------------------------------------------------------------------
+
 typedef void (*cmd_executor_t)(const char* cmd);
 
-// Prototypes for internal CLI cmd handlers
+
+// -----------------------------------------------------------------------------
+// Static Function Prototypes
+// -----------------------------------------------------------------------------
+
+// --- Prototypes for internal CLI cmd handlers ---
+
+/**
+ * @brief Executes the full set of commands available in normal operation mode.
+ * @param cmd The null-terminated command string to process.
+ */
 static void execute_full_cmd_set(const char* cmd);
+
+/**
+ * @brief Executes a limited set of commands available in recovery mode.
+ * @param cmd The null-terminated command string to process.
+ */
 static void execute_recovery_cmd_set(const char* cmd);
+
+/**
+ * @brief Handles the command line input, reading characters and executing commands.
+ * @param execute_func The function to call for command execution, based on the bootloader state
+ */
 static void handle_cmd_line_input(cmd_executor_t execute_func);
 
 // --- Function Prototypes ---
+
+/**
+ * @brief Handles the "erase <slot_num>" command to erase sectors of the specified slot.
+ * @param cmd_arg The argument string following "erase ", e.g., "0" or "1".
+ */
 static void handle_erase_cmd(const char* cmd_arg); 
+
+/**
+ * @brief Handles the "p <slot_num>" command to print the first 10 words of the specified slot's flash.
+ * @param cmd_arg The argument string following "p ", e.g., "0" or "1".
+ */
 static void handle_print_cmd(const char* cmd_arg); 
+
+/**
+ * @brief Handles the "info" command to display bootloader information.
+ */
 static void handle_info_cmd(void);
+
+/**
+ * @brief Handles the "activate <slot_num>" command to switch the active slot.
+ * @param cmd_arg The argument string following "activate ", e.g., "0" or
+ */
 static void handle_activate_cmd(const char* cmd_arg);
 
-void cli_init(void) 
-{
-    // Any CLI-specific initialization, e.g., print a prompt
-    uart_puts("Bootloader CLI Ready.\r\n");
-}
+// -----------------------------------------------------------------------------
+// Public Function Implementations
+// -----------------------------------------------------------------------------
 
 void cli_process_input(bootloader_state_t current_bl_state) 
 {
-    cmd_executor_t executor;
-    if (current_bl_state == BL_STATE_ERROR) 
-    {
-        executor = execute_recovery_cmd_set;
-    } 
-    else 
-    {
-        executor = execute_full_cmd_set;
-    }
+    cmd_executor_t executor = (current_bl_state == BL_STATE_ERROR) ? execute_recovery_cmd_set : execute_full_cmd_set;
     handle_cmd_line_input(executor);
 }
 
-// Renamed to avoid confusion with the public cli_process_input
-static void handle_cmd_line_input(cmd_executor_t execute_func) {
+// -----------------------------------------------------------------------------
+// Static Function Implementations
+// -----------------------------------------------------------------------------
+
+static void handle_cmd_line_input(cmd_executor_t execute_func) 
+{
     // Static variables to preserve state across calls
     static char cmd_buffer[64];
     static uint32_t buffer_index = 0;
@@ -55,7 +93,6 @@ static void handle_cmd_line_input(cmd_executor_t execute_func) {
     // Check if a character is available from the ring buffer
     if (uart_getc(&byte)) 
     {
-        
         // --- Handle special characters ---
         if (byte == '\r' || byte == '\n') 
         { 
@@ -90,10 +127,6 @@ static void handle_cmd_line_input(cmd_executor_t execute_func) {
     }
 }
 
-/**
- * @brief This function processes the actual cmds once a full line is received.
- * * @param cmd The null-terminated cmd string to process.
- */
 static void execute_full_cmd_set(const char* cmd)
 {
     if (strcmp(cmd, "run") == 0 || strcmp(cmd, "r") == 0)
@@ -110,7 +143,6 @@ static void execute_full_cmd_set(const char* cmd)
     else if (strcmp(cmd, "reboot") == 0)
     {
         uart_puts("Rebooting...\r\n");
-        SCB_CleanDCache();          // TODO: is this needed?
         NVIC_SystemReset();
     }
     else if (strcmp(cmd, "info") == 0) 
@@ -119,11 +151,10 @@ static void execute_full_cmd_set(const char* cmd)
     }
     else if (strncmp(cmd, "erase ", 6) == 0) 
     {
-        // Handle "erase <slot_num>"
         handle_erase_cmd(cmd + 6);
     }
-    else if (strncmp(cmd, "p ", 2) == 0) {
-        // Handle "p <slot_num>"
+    else if (strncmp(cmd, "p ", 2) == 0) 
+    {
         handle_print_cmd(cmd + 2);
     }
     else if (strncmp(cmd, "activate ", 9) == 0) 
@@ -152,9 +183,6 @@ static void execute_full_cmd_set(const char* cmd)
     }
 }
 
-/**
- * @brief Processes a limited, safe set of commands for recovery mode.
- */
 static void execute_recovery_cmd_set(const char* cmd)
 {
     if (strcmp(cmd, "reboot") == 0) 
@@ -180,11 +208,6 @@ static void execute_recovery_cmd_set(const char* cmd)
     }
 }
 
-
-/**
- * @brief Handles the 'activate' command to switch the active slot.
- * @param cmd_arg The argument string following "activate ", e.g., "0" or "1".
- */
 static void handle_activate_cmd(const char* cmd_arg) 
 {
     int slot_to_activate = atoi(cmd_arg);
@@ -194,24 +217,19 @@ static void handle_activate_cmd(const char* cmd_arg)
         return;
     }
     const bootloader_config_t* cfg = read_boot_config();
-    // if (!cfg->slot[slot_to_activate].is_valid) 
-    // {
-    //     LOG_ERROR("Cannot activate an invalid slot.\r\n");
-    //     return;
-    // }
+    if (!cfg->slot[slot_to_activate].is_valid) 
+    {
+        LOG_ERROR("Cannot activate an invalid slot.\r\n");
+        return;
+    }
     bootloader_config_t new_cfg;
     memcpy(&new_cfg, cfg, sizeof(bootloader_config_t));
     new_cfg.active_slot = slot_to_activate;
     if (!write_boot_config(&new_cfg)) 
-    {
         LOG_ERROR("Failed to update boot config for slot activation.\r\n");
-    } 
     else 
-    {
         LOG_INFO("Active slot switched to: %d\r\n", slot_to_activate);
-    }
 }
-
 
 static void handle_info_cmd(void) 
 {
@@ -229,10 +247,6 @@ static void handle_info_cmd(void)
     }
 }
 
-/**
- * @brief Handles the 'p' (print) command to show memory contents of a slot.
- * @param cmd_arg The argument string following "p ", e.g., "0" or "1".
- */
 static void handle_print_cmd(const char* cmd_arg) 
 {
     int slot_to_print = atoi(cmd_arg);
@@ -254,10 +268,6 @@ static void handle_print_cmd(const char* cmd_arg)
     uart_puts("\r\n");
 }
 
-/**
- * @brief Handles the 'erase' command to wipe an application slot.
- * @param cmd_arg The argument string following "erase ", e.g., "0" or "1".
- */
 static void handle_erase_cmd(const char* cmd_arg) 
 {
     // Convert the argument string to an integer
@@ -271,18 +281,15 @@ static void handle_erase_cmd(const char* cmd_arg)
 
     const bootloader_config_t* cfg = read_boot_config();
     
-    // // --- SAFETY CHECK ---
-    // // Prevent erasing the currently active slot.
-    // if (slot_to_erase == cfg->active_slot) 
-    // {
-    //     uart_puts("Cannot erase the currently active slot\r\n");
-    //     return;
-    // }
-
-    flash_prepare_for_write();
+    // Prevent erasing the currently active slot.
+    if (slot_to_erase == cfg->active_slot) 
+    {
+        uart_puts("Cannot erase the currently active slot\r\n");
+        return;
+    }
 
     uart_printf("Erasing slot: %d\r\n", slot_to_erase);
-
+    flash_prepare_for_write();
     uint8_t sector_to_erase = (slot_to_erase == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
 
     // Perform the erase
@@ -300,16 +307,10 @@ static void handle_erase_cmd(const char* cmd_arg)
         new_cfg.slot[slot_to_erase].fw_crc = 0xFFFFFFFF;
         
         if (!write_boot_config(&new_cfg)) 
-        {
             uart_puts("Failed to update boot config after erase.\r\n");
-        } 
         else 
-        {
             uart_puts("Boot config updated to reflect erased slot.\r\n");
-        }
     } 
     else 
-    {
         uart_puts("Failed to erase slot\r\n");
-    }
 }

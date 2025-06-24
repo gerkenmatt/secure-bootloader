@@ -9,12 +9,30 @@
 #include <string.h>
 #include "logger.h"
 
-// A struct to hold the properties of a single flash sector
+
+// -----------------------------------------------------------------------------
+// Module-Private Constants
+// -----------------------------------------------------------------------------
+
+#define NUM_SECTORS (sizeof(sector_map) / sizeof(flash_sector_info_t))
+
+// -----------------------------------------------------------------------------
+// Type Definitions
+// -----------------------------------------------------------------------------
+
+/**
+ * @brief Flash memory sector information structure.
+ */
 typedef struct 
 {
     uint32_t address; // The starting address of the sector
     uint32_t size;    // The size of the sector in bytes
 } flash_sector_info_t;
+
+
+// -----------------------------------------------------------------------------
+// Module-Private Data (Static Globals)
+// -----------------------------------------------------------------------------
 
 static const flash_sector_info_t sector_map[] = {
     // Sector, Address,     Size
@@ -32,14 +50,40 @@ static const flash_sector_info_t sector_map[] = {
     /* 11 */ { 0x081C0000, (256 * 1024)  }, // 256 KB
 };
 
-#define NUM_SECTORS (sizeof(sector_map) / sizeof(flash_sector_info_t))
+// -----------------------------------------------------------------------------
+// Static Function Prototypes
+// -----------------------------------------------------------------------------
 
+/**
+ * @brief Programs a single 32-bit word to flash memory.
+ * 
+ * @param addr The flash address to program (must be 4-byte aligned)
+ * @param word The 32-bit word to write
+ * @return true if the word was programmed successfully, false otherwise
+ */
 static bool program_flash_word(uint32_t addr, uint32_t word); 
+
+/**
+ * @brief Gets the starting address for a given flash sector.
+ * @param sector The sector number (0-11)
+ * @return The starting address of the sector in flash memory
+ */
 static uint32_t get_address_for_sector(uint8_t sector);
+
+/**
+ * @brief Gets the size in bytes for a range of flash sectors.
+ * @param start_sector The first sector number (0-11)
+ * @param end_sector The last sector number (0-11)
+ * @return The total size in bytes for the specified sectors
+ */
 static uint32_t get_size_for_sectors(uint8_t start_sector, uint8_t end_sector);
 
 
-flash_status_t program_flash(uint32_t addr, const uint32_t* data, uint32_t length_bytes)
+// -----------------------------------------------------------------------------
+// Public Function Implementations
+// -----------------------------------------------------------------------------
+
+flash_status_t program_flash(uint32_t addr, const uint32_t* p_data, uint32_t length_bytes)
 {
     // The number of 32-bit words to program.
     uint32_t num_words = (length_bytes + 3) / 4;
@@ -47,7 +91,7 @@ flash_status_t program_flash(uint32_t addr, const uint32_t* data, uint32_t lengt
     for (uint32_t i = 0; i < num_words; i++) 
     {
         uint32_t current_addr = addr + (i * 4);
-        uint32_t word_to_write = data[i];
+        uint32_t word_to_write = p_data[i];
 
         // Program the word to flash
         flash_status_t write_status = program_flash_word(current_addr, word_to_write);
@@ -69,58 +113,6 @@ flash_status_t program_flash(uint32_t addr, const uint32_t* data, uint32_t lengt
     return FLASH_OK;
 }
 
-/**
- * Programs a single 32-bit word to flash memory
- * 
- * @param addr The flash address to program (must be 4-byte aligned)
- * @param word The 32-bit word to write
- * @return true if the word was programmed successfully, false otherwise
- */
-static bool program_flash_word(uint32_t addr, uint32_t word) 
-{
-    // Check if address is 4-byte aligned
-    if (addr & 0x3) 
-    {
-        LOG_ERROR("Error: Address not 4-byte aligned\r\n");
-        return FLASH_ERROR_ALIGNMENT;
-    }
-
-    // Wait for any ongoing flash operations to complete
-    while (FLASH->SR & FLASH_SR_BSY);
-    
-    // Clear any previous error flags
-    clear_flash_errors();
-
-    // Configure flash programming size to 32-bit
-    FLASH->CR &= CR_PSIZE_MASK;
-    FLASH->CR |= (0x2 << FLASH_CR_PSIZE_Pos);
-    
-    // Enable flash programming mode
-    FLASH->CR |= FLASH_CR_PG;
-
-    // Write the word to flash
-    *(__IO uint32_t*)addr = word;
-    
-    // Data/Instruction barriers to ensure write completes
-    __DSB();
-    __ISB();
-
-    // Wait for programming to complete
-    while (FLASH->SR & FLASH_SR_BSY);
-
-    // Check for any programming errors
-    if (FLASH->SR & (FLASH_SR_PGAERR | FLASH_SR_WRPERR | FLASH_SR_OPERR | FLASH_SR_PGPERR | FLASH_SR_ERSERR)) 
-    {
-        LOG_ERROR("Error: Flash programming failed\r\n");
-        FLASH->CR &= ~FLASH_CR_PG;
-        // Report a generic write error
-        return FLASH_ERROR;
-    }
-
-    // Disable programming mode
-    FLASH->CR &= ~FLASH_CR_PG;
-    return FLASH_OK;
-}
 
 flash_status_t erase_flash_sectors(uint8_t start_sector, uint8_t end_sector) 
 {
@@ -194,13 +186,61 @@ void flash_prepare_for_write(void)
     FLASH->ACR |= (1 << 8) | (1 << 9); 
 }
 
-// --- Static Helper Functions ---
+void clear_flash_errors(void) 
+{
+    FLASH->SR |= FLASH_SR_PGPERR | FLASH_SR_WRPERR | FLASH_SR_PGAERR | FLASH_SR_OPERR | FLASH_SR_ERSERR;
+}
 
-/**
- * @brief Gets the starting memory address for a given flash sector.
- * @param sector The sector number (0-7 for the first 1MB).
- * @return The 32-bit starting address of the sector. Returns 0 for an invalid sector.
- */
+// -----------------------------------------------------------------------------
+// Static Function Implementations
+// -----------------------------------------------------------------------------
+
+static bool program_flash_word(uint32_t addr, uint32_t word) 
+{
+    // Check if address is 4-byte aligned
+    if (addr & 0x3) 
+    {
+        LOG_ERROR("Error: Address not 4-byte aligned\r\n");
+        return FLASH_ERROR_ALIGNMENT;
+    }
+
+    // Wait for any ongoing flash operations to complete
+    while (FLASH->SR & FLASH_SR_BSY);
+    
+    // Clear any previous error flags
+    clear_flash_errors();
+
+    // Configure flash programming size to 32-bit
+    FLASH->CR &= CR_PSIZE_MASK;
+    FLASH->CR |= (0x2 << FLASH_CR_PSIZE_Pos);
+    
+    // Enable flash programming mode
+    FLASH->CR |= FLASH_CR_PG;
+
+    // Write the word to flash
+    *(__IO uint32_t*)addr = word;
+    
+    // Data/Instruction barriers to ensure write completes
+    __DSB();
+    __ISB();
+
+    // Wait for programming to complete
+    while (FLASH->SR & FLASH_SR_BSY);
+
+    // Check for any programming errors
+    if (FLASH->SR & (FLASH_SR_PGAERR | FLASH_SR_WRPERR | FLASH_SR_OPERR | FLASH_SR_PGPERR | FLASH_SR_ERSERR)) 
+    {
+        LOG_ERROR("Error: Flash programming failed\r\n");
+        FLASH->CR &= ~FLASH_CR_PG;
+        // Report a generic write error
+        return FLASH_ERROR;
+    }
+
+    // Disable programming mode
+    FLASH->CR &= ~FLASH_CR_PG;
+    return FLASH_OK;
+}
+
 static uint32_t get_address_for_sector(uint8_t sector)
 {
     // Bounds check the input against the size of our map
@@ -210,10 +250,6 @@ static uint32_t get_address_for_sector(uint8_t sector)
     return sector_map[sector].address;
 }
 
-
-/**
- * @brief Calculates the TOTAL size of a RANGE of sectors.
- */
 static uint32_t get_size_for_sectors(uint8_t start_sector, uint8_t end_sector)
 {
     uint32_t total_size = 0;
@@ -227,36 +263,4 @@ static uint32_t get_size_for_sectors(uint8_t start_sector, uint8_t end_sector)
         total_size +=  sector_map[i].size;
     }
     return total_size;
-}
-
-// /**
-//  * Gets the sector number from a given flash address
-//  * 
-//  * @param addr The flash address to get the sector number for
-//  * @return The sector number of the given address
-//  */
-// static uint8_t get_sector_from_addr(uint32_t addr) 
-// {
-//     if (addr < 0x08000000 || addr >= 0x08200000)
-//         return -1;  // Invalid address
-
-//     if (addr < 0x08008000) return 0;
-//     if (addr < 0x08010000) return 1;
-//     if (addr < 0x08018000) return 2;
-//     if (addr < 0x08020000) return 3;
-//     if (addr < 0x08040000) return 4;
-//     if (addr < 0x08080000) return 5;
-//     if (addr < 0x080C0000) return 6;
-//     if (addr < 0x08100000) return 7;
-//     if (addr < 0x08140000) return 8;
-//     if (addr < 0x08180000) return 9;
-//     if (addr < 0x081C0000) return 10;
-//     if (addr < 0x08200000) return 11;
-
-//     return -1;  // Outside known flash
-// }
-
-void clear_flash_errors(void) 
-{
-    FLASH->SR |= FLASH_SR_PGPERR | FLASH_SR_WRPERR | FLASH_SR_PGAERR | FLASH_SR_OPERR | FLASH_SR_ERSERR;
 }

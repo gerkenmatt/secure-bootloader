@@ -5,17 +5,11 @@
 #ifndef CLI_H
 #define CLI_H
 
-#include <stdbool.h>
 #include "bootloader.h"
 
 // -----------------------------------------------------------------------------
 // Public Function Prototypes
 // -----------------------------------------------------------------------------
-
-/**
- * @brief Initializes the CLI module (e.g., UART for input/output).
- */
-void cli_init(void);
 
 /**
  * @brief Processes incoming characters and executes commands.

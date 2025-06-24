@@ -3,13 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-
-void logger_init(void) 
-{
-    // Any future logger-specific initialization can go here.
-}
-
-void logger_log(log_level_t lvl, const char *fmt, ...) 
+void log_message(log_level_t lvl, const char *fmt, ...) 
 {
     if (lvl > LOG_LEVEL) 
         return;

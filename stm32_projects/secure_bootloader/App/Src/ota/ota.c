@@ -11,20 +11,20 @@
 #include "uart.h"
 #include "utilities.h"
 #include "flash.h"
-#include "string.h"
 #include "systick.h"
 #include "stm32f767xx.h"
 
+#include <string.h> 
+
+// -----------------------------------------------------------------------------
+// Module-Private Constants
+// -----------------------------------------------------------------------------
+
 #define CHUNK_SIZE 256
-
-// -----------------------------------------------------------------------------
-// Timeout Management Data
-// -----------------------------------------------------------------------------
 #define OTA_TIMEOUT_MS 5000
-static uint32_t ota_last_byte_timestamp = 0;
 
 // -----------------------------------------------------------------------------
-// OTA Session State
+// Type Definitions (Private)
 // -----------------------------------------------------------------------------
 typedef struct {
     ota_header_info_t header;           ///< Firmware metadata header
@@ -34,22 +34,68 @@ typedef struct {
     uint16_t signature_length;          ///< Length of signature
 } ota_session_t;
 
+// -----------------------------------------------------------------------------
+// Module-Private Data (Static Globals)
+// -----------------------------------------------------------------------------
+
+static uint32_t ota_last_byte_timestamp = 0;
+
 static ota_session_t ota_session;
 static ota_parser_t  ota_parser;
 
 // -----------------------------------------------------------------------------
 // Static Function Prototypes
 // -----------------------------------------------------------------------------
+
+/**
+ * @brief Sends an OTA protocol response frame with the given status.
+ * @param status Response status code
+ */
 static void ota_send_response(uint8_t status);
-static void handle_ota_command(const ota_frame_t* frame);
-static void handle_ota_header(const ota_frame_t* frame);
-static void handle_ota_data(const ota_frame_t* frame);
-static void handle_ota_signature(const ota_frame_t* frame);
+
+/**
+ * @brief Checks for OTA session timeout and sets error state if timed out.
+ * @param p_frame Pointer to the received OTA frame
+ */
+static void handle_ota_command(const ota_frame_t* p_frame);
+
+/**
+ * @brief Handles the OTA header packet containing firmware metadata.
+ * Validates the header and prepares for data reception.
+ * @param p_frame Pointer to the received OTA frame
+ */
+static void handle_ota_header(const ota_frame_t* p_frame);
+
+/**
+ * @brief Handles incoming OTA data packets containing firmware binary.
+ * Validates data length, programs data to flash in 32-bit words,
+ * and verifies written data.
+ * @param p_frame Pointer to the received OTA frame
+ */
+static void handle_ota_data(const ota_frame_t* p_frame);
+
+/**
+ * @brief Handles incoming OTA signature packet containing firmware signature.
+ * Validates signature length and copies signature to global ota_signature struct.
+ * @param p_frame Pointer to the received OTA frame
+ */
+static void handle_ota_signature(const ota_frame_t* p_frame);
+
+/**
+ * @brief Resets the OTA session timeout timer.
+ * Should be called when an OTA session begins or a byte is received.
+ */
 static void ota_check_timeout(void);
+
+/**
+ * @brief Processes the CMD_START command to prepare for OTA update.
+ * Erases the inactive slot and prepares for data reception.
+ * @return true if successful, false if flash erase failed
+ */
 static bool process_cmd_start(void);
 
 // -----------------------------------------------------------------------------
-// Public Functions
+// Public Function Implementations
 // -----------------------------------------------------------------------------
 
 void ota_init(void)
@@ -88,21 +134,17 @@ void ota_process_non_blocking(void)
     ota_check_timeout();
 }
 
-// -----------------------------------------------------------------------------
-// Frame Reception and Command Handling
-// -----------------------------------------------------------------------------
-
-void handle_ota_command(const ota_frame_t* frame) 
+void handle_ota_command(const ota_frame_t* p_frame) 
 {
     // Validate frame has at least 1 byte for command
-    if (frame->length < 1)
+    if (p_frame->length < 1)
     {
         LOG_ERROR("Command packet has no payload\r\n");
         ota_send_response(RESP_NACK);
         return;
     }
 
-    switch (frame->data[0])
+    switch (p_frame->data[0])
     {
         case CMD_START:
             process_cmd_start();
@@ -114,7 +156,7 @@ void handle_ota_command(const ota_frame_t* frame)
             break;
         default:
             ota_send_response(RESP_NACK);
-            LOG_ERROR("Unknown CMD: 0x%08X\r\n", frame->data[0]);
+            LOG_ERROR("Unknown CMD: 0x%08X\r\n", p_frame->data[0]);
             break;
     }
 }
@@ -168,13 +210,9 @@ void ota_reset_timeout(void)
 }
 
 // -----------------------------------------------------------------------------
-// Static Helper Functions
+// Static Function Implementations
 // -----------------------------------------------------------------------------
 
-/**
- * @brief Sends an OTA protocol response frame with the given status.
- * @param status Response status code
- */
 static void ota_send_response(uint8_t status)
 {
     uint8_t frame_buffer[16];
@@ -186,9 +224,6 @@ static void ota_send_response(uint8_t status)
     }
 }
 
-/**
- * @brief Checks for OTA session timeout and sets error state if timed out.
- */
 static void ota_check_timeout(void)
 {
     if (ota_last_byte_timestamp != 0 && (get_systick() - ota_last_byte_timestamp) > OTA_TIMEOUT_MS)
@@ -199,11 +234,6 @@ static void ota_check_timeout(void)
     }
 }
 
-/**
- * @brief Processes the CMD_START command to prepare for OTA update.
- *        Erases the inactive slot and prepares for data reception.
- * @return true if successful, false if flash erase failed
- */
 static bool process_cmd_start(void)
 {
     const bootloader_config_t* cfg = read_boot_config();
@@ -228,13 +258,9 @@ static bool process_cmd_start(void)
     return true;
 }
 
-/**
- * @brief Handles incoming OTA header packet containing firmware metadata.
- * @param frame Pointer to received OTA frame
- */
-static void handle_ota_header(const ota_frame_t* frame)
+static void handle_ota_header(const ota_frame_t* p_frame)
 {
-    if (frame->length != sizeof(ota_header_info_t))
+    if (p_frame->length != sizeof(ota_header_info_t))
     {
         ota_send_response(RESP_NACK);
         LOG_ERROR("Invalid header length\r\n");
@@ -242,7 +268,7 @@ static void handle_ota_header(const ota_frame_t* frame)
     }
 
     // Copy header data to global struct
-    memcpy(&ota_session.header, frame->data, sizeof(ota_header_info_t));
+    memcpy(&ota_session.header, p_frame->data, sizeof(ota_header_info_t));
 
     // Sanity check firmware size against slot size
     if (ota_session.header.fw_size > SLOT_SIZE) 
@@ -255,21 +281,16 @@ static void handle_ota_header(const ota_frame_t* frame)
     ota_send_response(RESP_ACK);
 }
 
-/**
- * @brief Handles incoming OTA data packets containing firmware binary.
- *        Programs data to flash and verifies written data.
- * @param frame Pointer to received OTA frame
- */
-static void handle_ota_data(const ota_frame_t* frame)
+static void handle_ota_data(const ota_frame_t* p_frame)
 {
-    if (frame->length == 0 || frame->length > OTA_MAX_DATA)
+    if (p_frame->length == 0 || p_frame->length > OTA_MAX_DATA)
     {
         ota_send_response(RESP_NACK);
         LOG_ERROR("Invalid data length\r\n");
         return;
     }
     flash_prepare_for_write();
-    flash_status_t status = program_flash(ota_session.flash_write_address, (uint32_t*)frame->data, frame->length);
+    flash_status_t status = program_flash(ota_session.flash_write_address, (uint32_t*)p_frame->data, p_frame->length);
     if (status != FLASH_OK)
     {
         ota_send_response(RESP_NACK);
@@ -285,28 +306,24 @@ static void handle_ota_data(const ota_frame_t* frame)
     }
     else
     {
-        ota_session.flash_write_address += frame->length;
+        ota_session.flash_write_address += p_frame->length;
         ota_send_response(RESP_ACK);
     }
     lock_flash();
 }
 
-/**
- * @brief Handles incoming OTA signature packet containing firmware signature.
- * @param frame Pointer to received OTA frame
- */
-static void handle_ota_signature(const ota_frame_t* frame)
+static void handle_ota_signature(const ota_frame_t* p_frame)
 {
     // sanity check
-    if (frame->length > SIG_MAX_LEN) 
+    if (p_frame->length > SIG_MAX_LEN) 
     {
         ota_send_response(RESP_NACK);
         LOG_ERROR("Signature too large\r\n");
         return;
     }
     // copy it into RAM
-    memcpy(ota_session.signature, frame->data, frame->length);
-    ota_session.signature_length = frame->length;
+    memcpy(ota_session.signature, p_frame->data, p_frame->length);
+    ota_session.signature_length = p_frame->length;
     ota_send_response(RESP_ACK);
 }
 

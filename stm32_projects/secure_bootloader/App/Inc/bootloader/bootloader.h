@@ -100,12 +100,6 @@ bootloader_state_t bootloader_get_state(void);
 void bootloader_jump_to_active_application(void);
 
 /**
- * @brief Verifies memory aliasing between AXI and ITCM regions.
- * @return BL_OK if aliasing verified, BL_ERROR_INVALID_BOOT_MODE if mismatch.
- */
-bootloader_status_t bootloader_verify_memory_aliasing(void);
-
-/**
  * @brief Validates the boot environment configuration.
  */
 void validate_boot_environment(void);

@@ -1,5 +1,18 @@
+/**
+ * @file startup_stm32f767xx.c
+ * @brief CMSIS-compliant startup file for the STM32F767xx microcontroller.
+ *
+ * This file contains the vector table, the Reset_Handler, and default
+ * handlers for system exceptions and interrupts. It initializes the .data
+ * and .bss sections and then calls the main application entry point.
+ */
+
+#include <stdint.h>
 #include "stm32f767xx.h"
 
+// -----------------------------------------------------------------------------
+// Forward Declarations 
+// -----------------------------------------------------------------------------
 
 extern int main(void);
 extern void USART6_IRQHandler(void);
@@ -7,6 +20,11 @@ extern void SysTick_Handler(void);
 
 /* Symbols defined in the linker script */
 extern unsigned long _estack, _etext, _sdata, _edata, _sbss, _ebss;
+
+
+// -----------------------------------------------------------------------------
+// Handler Definitions
+// -----------------------------------------------------------------------------
 
 void Reset_Handler(void) 
 {
@@ -81,7 +99,10 @@ void HardFault_Handler(void)
     }
 }
 
-/* --- Vector table --- */
+// -----------------------------------------------------------------------------
+// Main Vector Table
+// -----------------------------------------------------------------------------
+
 __attribute__ ((section(".isr_vector")))
 void (* const vector_table[])(void) = {
     (void (*)(void)) &_estack,  // Initial Stack Pointer
