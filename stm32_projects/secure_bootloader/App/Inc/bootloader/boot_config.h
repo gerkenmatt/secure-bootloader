@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "bootloader.h"
 
 // -----------------------------------------------------------------------------
 // Constants and Macros
@@ -25,7 +26,7 @@
 typedef struct {
     uint32_t fw_size;                  ///< Firmware size in bytes
     uint32_t fw_crc;                   ///< CRC32 checksum
-    uint8_t  is_valid;                 ///< 1 if valid, 0 if not
+    bool     is_valid;                 ///< 1 if valid, 0 if not
     uint8_t  boot_attempts_remaining;  ///< For rollback
 } slot_metadata_t;
 
@@ -33,9 +34,9 @@ typedef struct {
  * @brief Bootloader configuration structure for A/B swap.
  */
 typedef struct {
-    uint32_t magic;             ///< Magic number to identify valid config
-    uint32_t active_slot;       ///< 0 for Slot A, 1 for Slot B
-    slot_metadata_t slot[2];    ///< Metadata for Slot A and B
+    uint32_t        magic;             ///< Magic number to identify valid config
+    slot_index_t    active_slot;       ///< 0 for Slot A, 1 for Slot B
+    slot_metadata_t slot[2];            ///< Metadata for Slot A and B
 } bootloader_config_t;
 
 // -----------------------------------------------------------------------------

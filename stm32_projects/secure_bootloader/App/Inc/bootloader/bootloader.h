@@ -27,8 +27,6 @@
 #define CONFIG_ADDR               0x081C0000  
 
 // --- Application Slot Layout ---
-#define SLOTA                     0
-#define SLOTB                     1
 
 #define SLOTA_ADDR                0x08040000  ///< Slot A starts at Sector 5
 #define SLOTA_SECTOR              5
@@ -38,9 +36,20 @@
 #define SLOT_SIZE                 0x000C0000  ///< 768KB per slot
 #define SLOT_SECTOR_COUNT         3           ///< Each slot occupies 3 x 256KB sectors
 
+#define NUM_SLOTS                 2           ///< Total number of application slots
+
 // -----------------------------------------------------------------------------
 // Enumerations
 // -----------------------------------------------------------------------------
+
+/**
+ * @brief Bootloader slot indices.
+ * Used to identify which application slot is being referenced.
+ */
+typedef enum {
+    SLOTA = 0,
+    SLOTB = 1
+} slot_index_t;
 
 /**
  * @brief Bootloader states.

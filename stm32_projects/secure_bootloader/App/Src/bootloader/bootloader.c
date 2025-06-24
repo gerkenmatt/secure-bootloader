@@ -15,8 +15,6 @@
 #include "stm32f767xx.h"
 #include "mbedtls/platform.h"
 
-#include <stdbool.h>
-#include <stdint.h>
 #include <string.h>
 
 // -----------------------------------------------------------------------------
@@ -126,80 +124,81 @@ void bootloader_run_state_machine(void)
             break;
     }
 }
-
-void bootloader_jump_to_active_application(void) 
+void bootloader_jump_to_active_application(void)
 {
-    const bootloader_config_t* cfg = read_boot_config();
-    uint32_t active_slot_idx = cfg->active_slot;
+    const bootloader_config_t* p_cfg = read_boot_config();
+    bootloader_config_t new_cfg;
+    memcpy(&new_cfg, p_cfg, sizeof(bootloader_config_t)); // Work with a mutable copy
 
-    // Boundary check
-    if (active_slot_idx > 1) 
+    bool config_changed = false;
+    slot_index_t current_slot = new_cfg.active_slot;
+
+    // 1. --- DECIDE ---
+    // Perform all logic checks first before writing to flash.
+    if (current_slot >= NUM_SLOTS || !new_cfg.slot[current_slot].is_valid)
     {
-        LOG_ERROR("Invalid active_slot index \r\n");
+        LOG_ERROR("Active slot (%d) is invalid. Halting.\r\n", current_slot);
         bootloader_set_state(BL_STATE_ERROR);
         return;
     }
 
-    // --- Rollback Logic ---
-    if (cfg->slot[active_slot_idx].boot_attempts_remaining == 0) 
+    // Check for rollback condition
+    if (new_cfg.slot[current_slot].boot_attempts_remaining == 0)
     {
-        LOG_ERROR("!!! Boot attempts failed for slot. Rolling back... !!!\r\n");
-        
-        uint32_t fallback_slot_idx = (active_slot_idx == SLOTA) ? SLOTB : SLOTA;
-        
-        // Roll back to fallback slot if it is valid
-        if (cfg->slot[fallback_slot_idx].is_valid) 
+        LOG_ERROR("!!! No boot attempts left for slot %d. Attempting rollback. !!!\r\n", current_slot);
+        slot_index_t fallback_slot = (current_slot == SLOTA) ? SLOTB : SLOTA;
+
+        if (new_cfg.slot[fallback_slot].is_valid)
         {
-            bootloader_config_t new_cfg;
-            memcpy(&new_cfg, cfg, sizeof(bootloader_config_t));
-            new_cfg.active_slot = fallback_slot_idx; // Swap to the other slot
-            // Restore boot attempts for the slot we are rolling back TO
-            new_cfg.slot[fallback_slot_idx].boot_attempts_remaining = BOOT_ATTEMPT_COUNT; 
-            write_boot_config(&new_cfg);
+            new_cfg.active_slot = fallback_slot;
+            new_cfg.slot[fallback_slot].boot_attempts_remaining = BOOT_ATTEMPT_COUNT; // Restore attempts
+            config_changed = true;
             
-            LOG_INFO("Rolled back to valid slot. Rebooting...\r\n");
+            // Write the single change and reboot to try the new config cleanly.
+            LOG_INFO("Rolling back to slot %d. Writing new config and rebooting.\r\n", fallback_slot);
+            write_boot_config(&new_cfg);
             NVIC_SystemReset();
-        } 
-        else 
+            return; // Should not be reached
+        }
+        else
         {
-            LOG_ERROR("!!! Fallback slot is not valid. Cannot roll back. Halting. !!!\r\n");
+            LOG_ERROR("!!! Fallback slot %d is not valid. Cannot roll back. Halting. !!!\r\n", fallback_slot);
             bootloader_set_state(BL_STATE_ERROR);
             return;
         }
     }
 
-    // --- Decrement Boot Counter ---
-    // If we are about to boot a valid slot with attempts remaining, use one attempt.
-    if (cfg->slot[active_slot_idx].is_valid) 
+    // 2. --- PREPARE FOR JUMP ---
+    // If we're here, we are committed to booting the current slot. Decrement the counter.
+    new_cfg.slot[current_slot].boot_attempts_remaining--;
+    config_changed = true;
+
+    // 3. --- WRITE ONCE ---
+    // Write the updated config (with decremented counter) to flash.
+    if (config_changed)
     {
-        bootloader_config_t new_cfg;
-        memcpy(&new_cfg, cfg, sizeof(bootloader_config_t));
-        new_cfg.slot[active_slot_idx].boot_attempts_remaining--;
-        write_boot_config(&new_cfg);
+        if (!write_boot_config(&new_cfg))
+        {
+            LOG_ERROR("Failed to write updated boot config. Halting.\r\n");
+            bootloader_set_state(BL_STATE_ERROR);
+            return;
+        }
     }
 
-    // --- Determine Jump Address ---
-    uint32_t jump_address = (active_slot_idx == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
-    
-    // --- Verify and Jump ---
-    const slot_metadata_t* active_slot_meta = &cfg->slot[active_slot_idx];
+    // 4. --- EXECUTE ---
+    // Verify CRC and jump.
+    uint32_t jump_address = (current_slot == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
+    const slot_metadata_t* active_slot_meta = &p_cfg->slot[current_slot];
 
-    if (!active_slot_meta->is_valid) 
+    if (!verify_crc(jump_address, active_slot_meta->fw_size, active_slot_meta->fw_crc))
     {
-        LOG_ERROR("Attempting to boot invalid slot. Aborting.\r\n");
-        bootloader_set_state(BL_STATE_ERROR);
-        return;
-    }
-    
-    if (!verify_crc(jump_address, active_slot_meta->fw_size, active_slot_meta->fw_crc)) 
-    {
-        LOG_ERROR("CRC check failed for active slot. Aborting jump.\r\n");
-        // This boot attempt failed. The counter was already decremented. On next boot, it will try again or roll back.
-        LOG_ERROR("Rebooting to re-evaluate boot state...\r\n");
+        LOG_ERROR("CRC check failed for active slot. Rebooting.\r\n");
+        // The boot attempt was already consumed. The next boot will either try again or roll back.
         NVIC_SystemReset();
-        return;
+        return; // Should not be reached
     }
 
+    LOG_INFO("Boot counter decremented. CRC OK. Jumping to application in slot %d.\r\n", current_slot);
     bootloader_jump_to(jump_address);
 }
 

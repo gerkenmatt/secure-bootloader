@@ -45,6 +45,8 @@ bool write_boot_config(const bootloader_config_t* p_new_config)
 {
     if (!p_new_config) return false;
 
+    bool success = false;
+
     flash_prepare_for_write();
 
     // Erase the config sector
@@ -52,20 +54,21 @@ bool write_boot_config(const bootloader_config_t* p_new_config)
     
     {
         LOG_ERROR("Failed to erase config sector!\r\n");
-        lock_flash();
-        return false;
+        goto cleanup;
     }
 
     // Write the new config struct to flash
     if (program_flash(CONFIG_ADDR, (const uint32_t*)p_new_config, sizeof(bootloader_config_t)) != FLASH_OK) 
     {
         LOG_ERROR("Failed to write new config to flash!\r\n");
-        lock_flash();
-        return false;
+        goto cleanup;
     }
 
+    success = true;
+
+cleanup: 
     lock_flash();
-    return true;
+    return success;
 
 }
 
