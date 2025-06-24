@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 // -----------------------------------------------------------------------------
-// Function Prototypes
+// Public Function Prototypes
 // -----------------------------------------------------------------------------
 
 /**
@@ -26,10 +26,10 @@ void uart_putc(uint8_t ch);
 
 /**
  * @brief Tries to get a character from the UART receive buffer (non-blocking).
- * @param data Pointer to a byte where the received character will be stored.
+ * @param p_data Pointer to a byte where the received character will be stored.
  * @return true if a character was successfully read, false if the buffer was empty.
  */
-bool uart_getc(uint8_t* data);
+bool uart_getc(uint8_t* p_data);
 
 /**
  * @brief Sends a null-terminated string via UART (blocking).

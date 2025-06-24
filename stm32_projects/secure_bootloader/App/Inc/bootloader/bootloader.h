@@ -9,6 +9,36 @@
 #include <stdbool.h>
 
 // -----------------------------------------------------------------------------
+// Constants and Macros
+// -----------------------------------------------------------------------------
+
+#define FLASH_BASE_ADDR          0x08000000                 ///< Main flash memory (AXI bus)
+#define ITCM_FLASH_ADDR          0x00200000                 ///< Aliased flash memory (ITCM bus)
+#define FLASH_END_ADDR           0x08200000                 ///< 2MB total flash size
+#define CR_PSIZE_MASK            ((uint32_t)0xFFFFFCFFU)    ///< Mask for flash programming size bits
+
+#define RAM_START                0x20000000
+#define RAM_SIZE                 (512 * 1024)  
+#define RAM_END                  (RAM_START + RAM_SIZE)
+
+#define BOOTLOADER_START_PHYS     FLASH_BASE_ADDR
+#define BOOTLOADER_START_ALIAS    ITCM_FLASH_ADDR
+#define CONFIG_SECTOR             11                        //TODO: clean this up
+#define CONFIG_ADDR               0x081C0000  
+
+// --- Application Slot Layout ---
+#define SLOTA                     0
+#define SLOTB                     1
+
+#define SLOTA_ADDR                0x08040000  ///< Slot A starts at Sector 5
+#define SLOTA_SECTOR              5
+#define SLOTB_ADDR                0x08100000  ///< Slot B starts at Sector 8
+#define SLOTB_SECTOR              8
+
+#define SLOT_SIZE                 0x000C0000  ///< 768KB per slot
+#define SLOT_SECTOR_COUNT         3           ///< Each slot occupies 3 x 256KB sectors
+
+// -----------------------------------------------------------------------------
 // Enumerations
 // -----------------------------------------------------------------------------
 
@@ -36,38 +66,9 @@ typedef enum {
     BL_ERROR_INVALID_BOOT_MODE = -6
 } bootloader_status_t;
 
-// -----------------------------------------------------------------------------
-// Memory Map Definitions
-// -----------------------------------------------------------------------------
-
-#define FLASH_BASE_ADDR          0x08000000  ///< Main flash memory (AXI bus)
-#define ITCM_FLASH_ADDR          0x00200000  ///< Aliased flash memory (ITCM bus)
-#define FLASH_END_ADDR           0x08200000  ///< 2MB total flash size
-#define CR_PSIZE_MASK            ((uint32_t)0xFFFFFCFFU)
-
-#define RAM_START                0x20000000
-#define RAM_SIZE                 (512 * 1024)  ///< 512KB RAM
-#define RAM_END                  (RAM_START + RAM_SIZE)
-
-#define BOOTLOADER_START_PHYS     FLASH_BASE_ADDR
-#define BOOTLOADER_START_ALIAS    ITCM_FLASH_ADDR
-#define CONFIG_SECTOR             11
-#define CONFIG_ADDR               0x081C0000  // Placed within the bootloader's flash region
-
-// --- Application Slot Layout ---
-#define SLOTA                     0
-#define SLOTB                     1
-
-#define SLOTA_ADDR                0x08040000  // Slot A starts at Sector 5
-#define SLOTA_SECTOR              5
-#define SLOTB_ADDR                0x08100000  // Slot B starts at Sector 8
-#define SLOTB_SECTOR              8
-
-#define SLOT_SIZE                 0x000C0000  // 768KB per slot
-#define SLOT_SECTOR_COUNT         3           // Each slot occupies 3 x 256KB sectors
 
 // -----------------------------------------------------------------------------
-// Function Prototypes
+// Public Function Prototypes
 // -----------------------------------------------------------------------------
 
 /**

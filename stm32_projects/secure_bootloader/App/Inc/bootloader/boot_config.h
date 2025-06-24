@@ -9,11 +9,15 @@
 #include <stdbool.h>
 
 // -----------------------------------------------------------------------------
-// Boot Configuration
+// Constants and Macros
 // -----------------------------------------------------------------------------
 
 #define BOOT_CONFIG_MAGIC        0xB007CF60  ///< Magic number to identify valid config
 #define BOOT_ATTEMPT_COUNT       7           ///< Number of boot attempts before rollback
+
+// -----------------------------------------------------------------------------
+// Data Structures
+// -----------------------------------------------------------------------------
 
 /**
  * @brief Metadata for a firmware slot.
@@ -35,15 +39,15 @@ typedef struct {
 } bootloader_config_t;
 
 // -----------------------------------------------------------------------------
-// Function Prototypes
+// Public Function Prototypes
 // -----------------------------------------------------------------------------
 
 /**
  * @brief Writes the bootloader configuration to flash memory.
- * @param new_config Pointer to the new bootloader configuration structure
+ * @param p_new_config Pointer to the new bootloader configuration structure
  * @return true if the configuration was successfully written, false otherwise
  */
-bool write_boot_config(const bootloader_config_t* new_config);
+bool write_boot_config(const bootloader_config_t* p_new_config);
 
 /**
  * @brief Initializes bootloader configuration.

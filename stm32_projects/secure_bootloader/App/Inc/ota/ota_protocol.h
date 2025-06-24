@@ -9,7 +9,7 @@
 #include <stdbool.h>
 
 // -----------------------------------------------------------------------------
-// Protocol Constants
+// Constants and Macros
 // -----------------------------------------------------------------------------
 
 #define PACKET_CMD        0x01  ///< Command packet
@@ -30,18 +30,8 @@
 #define OTA_MAX_DATA      256   ///< Maximum OTA data payload
 
 // -----------------------------------------------------------------------------
-// Data Structures
+// Enumerations
 // -----------------------------------------------------------------------------
-
-/**
- * @brief OTA frame structure.
- */
-typedef struct {
-    uint8_t  type;                ///< Packet type
-    uint16_t length;              ///< Payload length
-    uint8_t  data[OTA_MAX_DATA];  ///< Payload data
-    uint32_t crc;                 ///< CRC32 of payload
-} ota_frame_t;
 
 /**
  * @brief OTA parser state machine states.
@@ -56,6 +46,24 @@ typedef enum {
     OTA_PARSE_STATE_WAIT_EOF
 } ota_parse_state_t;
 
+
+// -----------------------------------------------------------------------------
+// Data Structures
+// -----------------------------------------------------------------------------
+
+/**
+ * @brief OTA frame structure.
+ */
+typedef struct {
+    uint8_t  type;                ///< Packet type
+    uint16_t length;              ///< Payload length
+    uint8_t  data[OTA_MAX_DATA];  ///< Payload data
+    uint32_t crc;                 ///< CRC32 of payload
+} ota_frame_t;
+
+/**
+ * @brief OTA parser context structure.
+ */
 typedef struct {
     ota_parse_state_t state;
     ota_frame_t       internal_frame;
@@ -64,26 +72,31 @@ typedef struct {
     uint8_t           crc_index;
 } ota_parser_t;
 
-// --- Public Functions ---
+// -----------------------------------------------------------------------------
+// Public Function Prototypes
+// -----------------------------------------------------------------------------
 
-/** @brief Initializes the OTA protocol parser state. */
-void ota_protocol_parser_init(ota_parser_t* parser);
+/** 
+ * @brief Initializes the OTA protocol parser state. 
+ * @param p_parser Pointer to the parser context to initialize.
+ */
+void ota_protocol_parser_init(ota_parser_t* p_parser);
 
 /**
  * @brief Processes a single byte from the input stream.
- * @param parser The parser context.
+ * @param p_parser The parser context.
  * @param byte The byte to process.
- * @param out_frame If a complete frame is received, it is copied here.
+ * @param p_out_frame If a complete frame is received, it is copied here.
  * @return true if a complete, valid frame was parsed, false otherwise.
  */
-bool ota_protocol_parse_byte(ota_parser_t* parser, uint8_t byte, ota_frame_t* out_frame);
+bool ota_protocol_parse_byte(ota_parser_t* p_parser, uint8_t byte, ota_frame_t* p_out_frame);
 
 /** 
  * @brief Creates a serialized response frame
  * @param status The response status (RESP_ACK or RESP_NACK)
- * @param out_buffer Pointer to the output buffer where the response will be written.
- * @param out_len Pointer to the length of the output buffer. Will be set to the length of the response. 
+ * @param p_out_buffer Pointer to the output buffer where the response will be written.
+ * @param p_out_len Pointer to the length of the output buffer. Will be set to the length of the response. 
  */
-void ota_protocol_create_response(uint8_t status, uint8_t* out_buffer, uint16_t* out_len);
+void ota_protocol_create_response(uint8_t status, uint8_t* p_out_buffer, uint16_t* p_out_len);
 
 #endif // OTA_PROTOCOL_H

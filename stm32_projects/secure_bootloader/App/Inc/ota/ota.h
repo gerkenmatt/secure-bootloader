@@ -34,7 +34,7 @@ typedef struct {
 } ota_header_info_t;
 
 // -----------------------------------------------------------------------------
-// Function Prototypes
+// Public Function Prototypes
 // -----------------------------------------------------------------------------
 
 /**
@@ -59,7 +59,6 @@ void ota_reset_timeout(void);
  * @brief Performs the final verification of the downloaded firmware.
  * This includes checking the signature and, upon success, updating
  * the bootloader configuration to make the new slot active.
- *
  * @return true if verification is successful and config is written, false otherwise.
  */
 bool ota_finalize_and_verify(void);

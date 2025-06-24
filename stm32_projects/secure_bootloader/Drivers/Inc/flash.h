@@ -9,7 +9,7 @@
 #include <stdbool.h>
 
 // -----------------------------------------------------------------------------
-// Type Definitions
+// Enumerations
 // -----------------------------------------------------------------------------
 
 /**
@@ -28,17 +28,17 @@ typedef enum
 } flash_status_t;
 
 // -----------------------------------------------------------------------------
-// Function Prototypes
+// Public Function Prototypes
 // -----------------------------------------------------------------------------
 
 /**
  * @brief Programs a region of flash memory.
  * @param addr Start address to program
- * @param data Pointer to data to write
+ * @param p_data Pointer to data to write
  * @param length Number of bytes to write
  * @return Status code
  */
-flash_status_t program_flash(uint32_t addr, const uint32_t* data, uint32_t length);
+flash_status_t program_flash(uint32_t addr, const uint32_t* p_data, uint32_t length);
 
 /**
  * @brief Erases a range of flash sectors.
@@ -65,7 +65,6 @@ void clear_flash_errors(void);
 
 /**
  * @brief Prepares the flash memory for writing.
- * 
  * This function unlocks the flash, clears any error flags,
  * sets the programming size to 32 bits
  */
