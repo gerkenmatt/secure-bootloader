@@ -5,6 +5,7 @@
 #include "uart.h"
 #include "systick.h"
 #include "logger.h"
+#include "led.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -80,25 +81,7 @@ static void system_init(void)
     // Configure flash latency for high-speed operation (216 MHz)
     FLASH->ACR = (FLASH->ACR & ~FLASH_ACR_LATENCY) | FLASH_ACR_LATENCY_7WS;
 
-    // Enable GPIOA and GPIOC peripheral clocks
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN | RCC_AHB1ENR_GPIOCEN;
-
-    // Set PA5 to output (was used for LED blinking, optional now)
-    GPIOA->MODER = (GPIOA->MODER & ~GPIO_MODER_MODER5) | GPIO_MODER_MODER5_0;
-
-    // Set PC13 (BOOT0 pin) as input with pull-down
-    GPIOC->MODER &= ~GPIO_MODER_MODER13;
-    GPIOC->PUPDR |= GPIO_PUPDR_PUPDR13_1;
-
-    /* Enable clock for GPIOB */
-    RCC->AHB1ENR |= RCC_AHB1ENR_GPIOBEN;
-
-    /* Configure PB0, PB7, and PB14 as outputs for LEDs*/
-    GPIOB->MODER &= ~((3UL << (0 * 2)) | (3UL << (7 * 2)) | (3UL << (14 * 2)));
-    GPIOB->MODER |= ((1UL << (0 * 2)) | (1UL << (7 * 2)) | (1UL << (14 * 2)));
-    GPIOB->ODR &= ~(1UL << 0); //clear_green
-    GPIOB->ODR &= ~(1UL << 7); //clear_blue
-    GPIOB->ODR &= ~(1UL << 14); //clear_red
+    led_init();
 
     // Enable all fault handlers
     SCB->SHCSR |= SCB_SHCSR_USGFAULTENA_Msk | SCB_SHCSR_BUSFAULTENA_Msk | SCB_SHCSR_MEMFAULTENA_Msk;

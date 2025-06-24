@@ -29,6 +29,8 @@
 
 #define OTA_MAX_DATA      256   ///< Maximum OTA data payload
 
+#define OTA_MAX_RESPONSE_FRAME_LEN 16 ///< Maximum frame length for response packet
+
 // -----------------------------------------------------------------------------
 // Enumerations
 // -----------------------------------------------------------------------------

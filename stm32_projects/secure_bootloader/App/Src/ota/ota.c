@@ -14,6 +14,9 @@
 #include "systick.h"
 #include "stm32f767xx.h"
 
+#include "mbedtls/sha256.h" 
+#include "mbedtls/pk.h"     
+#include "mbedtls/error.h"
 #include <string.h> 
 
 // -----------------------------------------------------------------------------
@@ -24,7 +27,18 @@
 #define OTA_TIMEOUT_MS 5000
 
 // -----------------------------------------------------------------------------
-// Type Definitions (Private)
+// Enumerations
+// -----------------------------------------------------------------------------
+
+typedef enum {
+    OTA_STATE_IDLE,
+    OTA_STATE_STARTED, 
+    OTA_STATE_RECEIVING_DATA, 
+    OTA_STATE_AWAITING_VERIFICATION 
+} ota_process_state_t;
+
+// -----------------------------------------------------------------------------
+// Data Structures
 // -----------------------------------------------------------------------------
 typedef struct {
     ota_header_info_t header;           ///< Firmware metadata header
@@ -32,6 +46,7 @@ typedef struct {
     uint8_t  inactive_slot_index;       ///< Index of inactive slot for update
     uint8_t  signature[SIG_MAX_LEN];    ///< Firmware signature buffer
     uint16_t signature_length;          ///< Length of signature
+    ota_process_state_t state;          ///< Current OTA Session state
 } ota_session_t;
 
 // -----------------------------------------------------------------------------
@@ -63,23 +78,26 @@ static void handle_ota_command(const ota_frame_t* p_frame);
  * @brief Handles the OTA header packet containing firmware metadata.
  * Validates the header and prepares for data reception.
  * @param p_frame Pointer to the received OTA frame
+ * @param p_session Pointer to the OTA session to handle
  */
-static void handle_ota_header(const ota_frame_t* p_frame);
+static void handle_ota_header(const ota_frame_t* p_frame, ota_session_t* p_session);
 
 /**
  * @brief Handles incoming OTA data packets containing firmware binary.
  * Validates data length, programs data to flash in 32-bit words,
  * and verifies written data.
  * @param p_frame Pointer to the received OTA frame
+ * @param p_session Pointer to the OTA session to handle
  */
-static void handle_ota_data(const ota_frame_t* p_frame);
+static void handle_ota_data(const ota_frame_t* p_frame, ota_session_t* p_session);
 
 /**
  * @brief Handles incoming OTA signature packet containing firmware signature.
  * Validates signature length and copies signature to global ota_signature struct.
  * @param p_frame Pointer to the received OTA frame
+ * @param p_session Pointer to the OTA session to handle
  */
-static void handle_ota_signature(const ota_frame_t* p_frame);
+static void handle_ota_signature(const ota_frame_t* p_frame, ota_session_t* p_session);
 
 /**
  * @brief Resets the OTA session timeout timer.
@@ -90,9 +108,9 @@ static void ota_check_timeout(void);
 /**
  * @brief Processes the CMD_START command to prepare for OTA update.
  * Erases the inactive slot and prepares for data reception.
- * @return true if successful, false if flash erase failed
+ * @param p_session Pointer to the OTA session to handle
  */
-static bool process_cmd_start(void);
+static void process_cmd_start(ota_session_t* p_session);
 
 // -----------------------------------------------------------------------------
 // Public Function Implementations
@@ -109,6 +127,7 @@ void ota_process_non_blocking(void)
     uint8_t byte;
     ota_frame_t received_frame;
 
+
     while (uart_getc(&byte))
     {
         ota_reset_timeout(); // A byte was received, reset the session timeout.
@@ -120,9 +139,9 @@ void ota_process_non_blocking(void)
             switch (received_frame.type)
             {
                 case PACKET_CMD:    handle_ota_command(&received_frame);   break;
-                case PACKET_HEADER: handle_ota_header(&received_frame);    break;
-                case PACKET_DATA:   handle_ota_data(&received_frame);      break;
-                case PACKET_SIG:    handle_ota_signature(&received_frame); break;
+                case PACKET_HEADER: handle_ota_header(&received_frame, &ota_session);    break;
+                case PACKET_DATA:   handle_ota_data(&received_frame, &ota_session);      break;
+                case PACKET_SIG:    handle_ota_signature(&received_frame, &ota_session); break;
                 default:
                     ota_send_response(RESP_NACK);
                     LOG_ERROR("Unknown packet type");
@@ -147,7 +166,7 @@ void handle_ota_command(const ota_frame_t* p_frame)
     switch (p_frame->data[0])
     {
         case CMD_START:
-            process_cmd_start();
+            process_cmd_start(&ota_session);
             break;
         case CMD_END:
             LOG_INFO("CMD_END received. Proceeding to verification.");
@@ -215,7 +234,7 @@ void ota_reset_timeout(void)
 
 static void ota_send_response(uint8_t status)
 {
-    uint8_t frame_buffer[16];
+    uint8_t frame_buffer[OTA_MAX_RESPONSE_FRAME_LEN];
     uint16_t frame_len = 0;
     ota_protocol_create_response(status, frame_buffer, &frame_len);
     for (uint16_t i = 0; i < frame_len; i++)
@@ -234,15 +253,20 @@ static void ota_check_timeout(void)
     }
 }
 
-static bool process_cmd_start(void)
+static void process_cmd_start(ota_session_t* p_session)
 {
+    p_session->state = OTA_STATE_STARTED;
+
     const bootloader_config_t* cfg = read_boot_config();
-    ota_session.inactive_slot_index = (cfg->active_slot == SLOTA) ? SLOTB : SLOTA;
-    uint32_t inactive_slot_addr = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
-    uint8_t  inactive_slot_sector = (ota_session.inactive_slot_index == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
-    memset(&ota_session.header, 0, sizeof(ota_session.header));
-    ota_session.flash_write_address = inactive_slot_addr;
-    ota_session.signature_length = 0;
+    p_session->inactive_slot_index = (cfg->active_slot == SLOTA) ? SLOTB : SLOTA;
+    uint32_t inactive_slot_addr = (p_session->inactive_slot_index == SLOTA) ? SLOTA_ADDR : SLOTB_ADDR;
+    uint8_t  inactive_slot_sector = (p_session->inactive_slot_index == SLOTA) ? SLOTA_SECTOR : SLOTB_SECTOR;
+
+    memset(&p_session->header, 0, sizeof(p_session->header));
+
+    p_session->flash_write_address = inactive_slot_addr;
+    p_session->signature_length = 0;
+
     flash_prepare_for_write();
     flash_status_t status = erase_flash_sectors(inactive_slot_sector, inactive_slot_sector + SLOT_SECTOR_COUNT - 1);
     if (status != FLASH_OK)
@@ -251,15 +275,22 @@ static bool process_cmd_start(void)
         LOG_ERROR("Flash erase failed");
         bootloader_set_state(BL_STATE_ERROR);
         lock_flash();
-        return false;
+        return;
     }
     ota_send_response(RESP_ACK);
     lock_flash();
-    return true;
 }
 
-static void handle_ota_header(const ota_frame_t* p_frame)
+static void handle_ota_header(const ota_frame_t* p_frame, ota_session_t* p_session)
 {
+    if (p_session->state != OTA_STATE_STARTED)
+    {
+        LOG_ERROR("Received HEADER packet before START command.");
+        ota_send_response(RESP_NACK);
+        return;
+    }
+    p_session->state = OTA_STATE_RECEIVING_DATA;
+
     if (p_frame->length != sizeof(ota_header_info_t))
     {
         ota_send_response(RESP_NACK);
@@ -268,10 +299,10 @@ static void handle_ota_header(const ota_frame_t* p_frame)
     }
 
     // Copy header data to global struct
-    memcpy(&ota_session.header, p_frame->data, sizeof(ota_header_info_t));
+    memcpy(&p_session->header, p_frame->data, sizeof(ota_header_info_t));
 
     // Sanity check firmware size against slot size
-    if (ota_session.header.fw_size > SLOT_SIZE) 
+    if (p_session->header.fw_size > SLOT_SIZE) 
     {
         LOG_ERROR("Firmware size exceeds slot size");
         ota_send_response(RESP_NACK);
@@ -281,8 +312,15 @@ static void handle_ota_header(const ota_frame_t* p_frame)
     ota_send_response(RESP_ACK);
 }
 
-static void handle_ota_data(const ota_frame_t* p_frame)
+static void handle_ota_data(const ota_frame_t* p_frame, ota_session_t* p_session)
 {
+    if (p_session->state != OTA_STATE_RECEIVING_DATA)
+    {
+        ota_send_response(RESP_NACK);
+        LOG_ERROR("Received DATA packet in unexpected state.");
+        return;
+    }
+
     if (p_frame->length == 0 || p_frame->length > OTA_MAX_DATA)
     {
         ota_send_response(RESP_NACK);
@@ -290,7 +328,7 @@ static void handle_ota_data(const ota_frame_t* p_frame)
         return;
     }
     flash_prepare_for_write();
-    flash_status_t status = program_flash(ota_session.flash_write_address, (uint32_t*)p_frame->data, p_frame->length);
+    flash_status_t status = program_flash(p_session->flash_write_address, (uint32_t*)p_frame->data, p_frame->length);
     if (status != FLASH_OK)
     {
         ota_send_response(RESP_NACK);
@@ -306,13 +344,13 @@ static void handle_ota_data(const ota_frame_t* p_frame)
     }
     else
     {
-        ota_session.flash_write_address += p_frame->length;
+        p_session->flash_write_address += p_frame->length;
         ota_send_response(RESP_ACK);
     }
     lock_flash();
 }
 
-static void handle_ota_signature(const ota_frame_t* p_frame)
+static void handle_ota_signature(const ota_frame_t* p_frame, ota_session_t* p_session)
 {
     // sanity check
     if (p_frame->length > SIG_MAX_LEN) 
@@ -322,8 +360,8 @@ static void handle_ota_signature(const ota_frame_t* p_frame)
         return;
     }
     // copy it into RAM
-    memcpy(ota_session.signature, p_frame->data, p_frame->length);
-    ota_session.signature_length = p_frame->length;
+    memcpy(p_session->signature, p_frame->data, p_frame->length);
+    p_session->signature_length = p_frame->length;
     ota_send_response(RESP_ACK);
 }
 

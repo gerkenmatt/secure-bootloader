@@ -1,4 +1,4 @@
-#include "stm32f7xx.h"
+#include "stm32f767xx.h"
 
 // --- SysTick Globals and Functions ---
 

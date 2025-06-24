@@ -5,7 +5,8 @@
 // Public Function Implementations
 // -----------------------------------------------------------------------------
 
-uint32_t crc32(const uint8_t* p_data, uint16_t len) 
+//TODO: use the built-in CRC peripheral
+uint32_t crc32(const uint8_t* p_data, size_t len) 
 {
     // Initialize CRC to all Fs
     uint32_t crc = 0xFFFFFFFF;
@@ -31,9 +32,9 @@ uint32_t crc32(const uint8_t* p_data, uint16_t len)
     return ~crc;
 }
 
-uint32_t extract_crc(const uint8_t *p_bytes) 
+uint32_t extract_crc(const uint8_t *bytes) 
 {
-    return p_bytes[0] | (p_bytes[1] << 8) | (p_bytes[2] << 16) | (p_bytes[3] << 24);
+    return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
 }
 
 bool verify_crc(uint32_t address, uint32_t size, uint32_t expected_crc) 

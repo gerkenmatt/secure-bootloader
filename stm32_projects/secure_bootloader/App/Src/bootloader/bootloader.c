@@ -11,6 +11,7 @@
 #include "logger.h"
 #include "ota.h"
 #include "utilities.h"
+#include "led.h"
 
 #include "stm32f767xx.h"
 #include "mbedtls/platform.h"
@@ -45,6 +46,7 @@ static void bootloader_jump_to(uint32_t app_address);
 
 void bootloader_init(void)
 {
+
     // Initialize configuration if not already set
     const bootloader_config_t* config = read_boot_config();
     if (config->magic != BOOT_CONFIG_MAGIC) 
@@ -85,10 +87,13 @@ void bootloader_run_state_machine(void)
     {
         case BL_STATE_READY:
             // In the READY state, handle input using the full command set.
+            led_on(LED_GREEN);
             cli_process_input(current_state);
             break;
 
         case BL_STATE_RECEIVING:
+            led_on(LED_BLUE);
+            led_off(LED_GREEN);
             ota_process_non_blocking();
             break;
 
@@ -112,7 +117,9 @@ void bootloader_run_state_machine(void)
             static bool error_indicated = false;
             if (!error_indicated) 
             {
-                GPIOB->ODR |= (1UL << 14); // Set red LED
+                led_on(LED_RED);
+                led_off(LED_GREEN);
+                led_off(LED_BLUE);
                 LOG_ERROR("\r\n!!! An error occurred. Entering recovery mode. Type 'help'. !!!");
                 error_indicated = true;
             }

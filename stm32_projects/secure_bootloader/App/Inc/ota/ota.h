@@ -8,15 +8,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "bootloader.h"
-#include "mbedtls/sha256.h"
-#include "mbedtls/pk.h"
-#include "mbedtls/error.h"
 
 // -----------------------------------------------------------------------------
 // Constants and Macros
 // -----------------------------------------------------------------------------
 
-#define FRAME_TOTAL_LEN   10   ///< Total size of fixed fields in OTA frame
 #define SIG_MAX_LEN       512  ///< Maximum signature length
 
 // -----------------------------------------------------------------------------

@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 // -----------------------------------------------------------------------------
 // Public Function Prototypes
@@ -19,7 +20,7 @@
  * @param len Length of data buffer in bytes
  * @return Calculated 32-bit CRC value
  */
-uint32_t crc32(const uint8_t* p_data, uint16_t len);
+uint32_t crc32(const uint8_t* p_data, size_t len);
 
 /**
  * @brief Extracts a 32-bit CRC value from a byte array.

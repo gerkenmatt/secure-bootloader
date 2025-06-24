@@ -50,51 +50,14 @@ void Default_Handler(void)
 
 void HardFault_Handler(void)
 {
-    uint32_t hfsr = SCB->HFSR;
-    uint32_t cfsr = SCB->CFSR;
-    uint8_t mmfsr = (uint8_t)(cfsr & 0xFF);
-    uint8_t bfsr  = (uint8_t)((cfsr >> 8) & 0xFF);
-    uint16_t ufsr = (uint16_t)((cfsr >> 16) & 0xFFFF);
+    // uint32_t hfsr = SCB->HFSR;
+    // uint32_t cfsr = SCB->CFSR;
+    // uint8_t mmfsr = (uint8_t)(cfsr & 0xFF);
+    // uint8_t bfsr  = (uint8_t)((cfsr >> 8) & 0xFF);
+    // uint16_t ufsr = (uint16_t)((cfsr >> 16) & 0xFFFF);
 
     while (1)
     {
-        if (hfsr & (1 << 30)) 
-        { 
-            // Forced HardFault
-            GPIOB->ODR ^= (1UL << 7);  // blue
-        }
-
-        if (bfsr) 
-        {
-            for (int i = 0; i < 1; i++) 
-            {
-                GPIOB->ODR ^= (1UL << 14); // red
-                for (volatile int d = 0; d < 100000; d++);
-                GPIOB->ODR ^= (1UL << 14);
-                for (volatile int d = 0; d < 100000; d++);
-            }
-        } 
-        else if (mmfsr) 
-        {
-            for (int i = 0; i < 2; i++) 
-            {
-                GPIOB->ODR ^= (1UL << 14);
-                for (volatile int d = 0; d < 100000; d++);
-                GPIOB->ODR ^= (1UL << 14);
-                for (volatile int d = 0; d < 100000; d++);
-            }
-        } 
-        else if (ufsr) 
-        {
-            for (int i = 0; i < 3; i++) 
-            {
-                GPIOB->ODR ^= (1UL << 14);
-                for (volatile int d = 0; d < 100000; d++);
-                GPIOB->ODR ^= (1UL << 14);
-                for (volatile int d = 0; d < 100000; d++);
-            }
-        }
-
         for (volatile int i = 0; i < 1000000; i++);
     }
 }
