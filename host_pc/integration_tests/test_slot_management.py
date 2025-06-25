@@ -1,190 +1,23 @@
 import pytest
-import pytest_asyncio
-import asyncio
 import os
-import re
 import struct
-from ota_host import OTAHost, crc32
 
-# --- Test Configuration  ---
-DEVICE_NAME = "ESP32_OTA_BLE"
-TEST_FW_DIR = "../test_data/"
-
-# Using Firmware A for these tests as a representative valid firmware
-VALID_FW_A_SLOTA = os.path.join(TEST_FW_DIR, "firmware_A_slota.bin")
-VALID_SIG_A_SLOTA = os.path.join(TEST_FW_DIR, "firmware_A_slota.sig")
-VALID_FW_A_SLOTB = os.path.join(TEST_FW_DIR, "firmware_A_slotb.bin")
-VALID_SIG_A_SLOTB = os.path.join(TEST_FW_DIR, "firmware_A_slotb.sig")
-
-VALID_FW_B_SLOTA = os.path.join(TEST_FW_DIR, "firmware_B_slota.bin")
-VALID_SIG_B_SLOTA = os.path.join(TEST_FW_DIR, "firmware_B_slota.sig")
-VALID_FW_B_SLOTB = os.path.join(TEST_FW_DIR, "firmware_B_slotb.bin")
-VALID_SIG_B_SLOTB = os.path.join(TEST_FW_DIR, "firmware_B_slotb.sig")
-
-# --- Terminal Colors ---
-BLUE = "\033[94m"
-PURPLE = "\033[95m"
-CYAN = "\033[96m"
-RED = "\033[91m"
-GREEN = "\033[92m"
-YELLOW = "\033[93m"
-RESET = "\033[0m"
-BOLD = "\033[1m"
-
-
-# --- Helper Coroutines ---
-
-async def reboot_and_wait_for_ready(host: OTAHost, reboot_cmd_delay: float = 2.0, ready_timeout: float = 15.0) -> bool:
-    """Sends a reboot command and waits for the device to be ready."""
-    if host.verbose:
-        print(YELLOW + "  HELPER: Rebooting device and waiting for readiness..." + RESET)
-    await host.clear_device_logs()
-    
-    await host.send_text_command(command="reboot")
-    await asyncio.sleep(reboot_cmd_delay) 
-
-    if not await host.wait_for_log_message("Bootloader ready. Waiting for command", timeout=ready_timeout):
-        print(RED + "  HELPER: Device did not signal readiness after reboot." + RESET)
-        return False
-    
-    if host.verbose:
-        print(GREEN + "  HELPER: Device rebooted and is ready." + RESET)
-    return True
-
-async def perform_simple_ota(host: OTAHost, fw_path: str, sig_path: str) -> bool:
-    """A wrapper for performing a basic, successful OTA update."""
-    if not os.path.exists(fw_path) or not os.path.exists(sig_path):
-        pytest.fail(f"Missing OTA files: {fw_path} or {sig_path}")
-    
-    with open(fw_path, "rb") as f: fw_data = f.read()
-    with open(sig_path, "rb") as f: sig_data = f.read()
-
-    return await host.perform_full_ota(fw_data, sig_data)
-
-async def get_bootloader_info(host: OTAHost) -> dict | None:
-    """Sends 'info' and parses the output into a dictionary."""
-    await host.clear_device_logs()
-    if host.verbose:
-        print(YELLOW + "  HELPER: Requesting bootloader info..." + RESET)
-    
-    if not await host.send_text_command("info"):
-        return None
-    
-    if not await host.wait_for_log_message("| Slot B:", timeout=5):
-        print(RED + "  HELPER: Did not receive 'Slot B' part of info block." + RESET)
-        return None
-    await asyncio.sleep(0.5) 
-
-    # Use host.device_logs directly to avoid NameError
-    if host.verbose:
-        print(CYAN + f"--- Received Info Block ---\n" + "\n".join(host.device_logs) + f"\n---------------------------" + RESET)
-
-    info_dict = {}
-    slot_context_dict = None
-    try:
-        for line in host.device_logs:
-            line = line.strip()
-            if not line.startswith('|') or ":" not in line:
-                continue
-
-            if "| Slot A:" in line:
-                info_dict["slot_a"] = {}
-                slot_context_dict = info_dict["slot_a"]
-                continue
-            elif "| Slot B:" in line:
-                info_dict["slot_b"] = {}
-                slot_context_dict = info_dict["slot_b"]
-                continue
-
-            parts = line.split(':', 1)
-            key = parts[0].replace('|', '').strip().replace(' ', '_')
-            value_str = parts[1].strip()
-
-            if '0x' in value_str: value = value_str
-            elif value_str.lower() == 'true': value = True
-            elif value_str.lower() == 'false': value = False
-            elif value_str.split(" ")[0].isdigit(): value = int(value_str.split(" ")[0])
-            else: value = value_str
-            
-            # Check if key belongs in a slot context
-            if slot_context_dict is not None and key in ["is_valid", "boot_attempts", "fw_size", "fw_crc"]:
-                 slot_context_dict[key] = value
-            else: 
-                 info_dict[key] = value
-    except Exception as e:
-        print(RED + f"  HELPER: Failed to parse info block: {e}\nRaw text:\n" + "\n".join(host.device_logs) + RESET)
-        return None
-    
-    return info_dict
-
-async def get_slot_memory_words(host: OTAHost, slot: int) -> list[int] | None:
-    """
-    Sends the 'print <slot>' command and parses the output into a list of integers.
-    """
-    await host.clear_device_logs()
-    command = f"print {slot}"
-    # The 'print' command has a unique, single-line response.
-    # We can wait for the start of it.
-    if not await host.send_text_command(command, f"First 10 words of Slot {slot}"):
-        print(RED + f"Did not receive response for '{command}'" + RESET)
-        return None
-    
-    # Give it a moment to ensure the full line is received
-    await asyncio.sleep(0.2)
-    
-    output_line = None
-    for log in host.device_logs:
-        if log.startswith("0x"): # The data line starts with a hex value
-            output_line = log
-            break
-
-    if not output_line:
-        print(RED + "Could not find data line in 'print' command output." + RESET)
-        return None
-    
-    try:
-        # Split the line by spaces and convert each hex string to an integer
-        hex_values = [int(val, 16) for val in output_line.split()]
-        return hex_values
-    except (ValueError, IndexError) as e:
-        print(RED + f"Failed to parse 'print' output: {e}\nRaw line: '{output_line}'" + RESET)
-        return None
-
-# --- Pytest Fixture ---
-
-@pytest_asyncio.fixture(scope="function")
-async def ota_host_fixture(request):
-    """
-    Sets up and tears down the OTAHost connection for each test.
-    """
-    is_verbose = os.getenv("TEST_VERBOSE", "False").lower() == "true" or request.config.getoption("verbose") > 0
-    
-    print(PURPLE + BOLD + f"\n{'='*20} SETUP FIXTURE: ota_host_fixture {'='*20}" + RESET)
-    host = OTAHost(DEVICE_NAME, verbose=is_verbose)
-    if not await host.connect():
-         pytest.fail(f"Fixture: Failed to connect to device '{DEVICE_NAME}'", pytrace=False)
-
-    print(PURPLE + BOLD + "Fixture: Performing a clean OTA to guarantee a known starting state..." + RESET)
-    # We flash to Slot A. After this, Slot A will be active, Slot B will be the previous valid image.
-    if not await perform_simple_ota(host, VALID_FW_A_SLOTA, VALID_SIG_A_SLOTA):
-        pytest.fail("Fixture: Initial OTA failed. Cannot guarantee a clean state for tests.", pytrace=False)
-
-    print(GREEN + BOLD + f"{'='*20} SETUP FIXTURE COMPLETE {'='*20}\n" + RESET)
-    
-    yield host
-    
-    print(PURPLE + BOLD + f"\n{'='*20} TEARDOWN FIXTURE: ota_host_fixture {'='*20}" + RESET)
-    await host.disconnect()
-    print(PURPLE + BOLD + f"{'='*20} TEARDOWN FIXTURE COMPLETE {'='*20}\n" + RESET)
-
-
-# --- Slot Management Integration Tests ---
+# Helper functions and fixtures are now automatically imported from conftest.py
+from conftest import (
+    reboot_and_wait_for_ready,
+    perform_simple_ota,
+    get_bootloader_info,
+    get_slot_memory_words,
+    BLUE, PURPLE, CYAN, RED, GREEN, YELLOW, RESET, BOLD, # Import colors if needed for test-specific prints
+    VALID_FW_B_SLOTA, VALID_SIG_B_SLOTA,
+    VALID_FW_B_SLOTB, VALID_SIG_B_SLOTB,
+)
+from ota_host import OTAHost # Still need the type hint
 
 @pytest.mark.asyncio
 async def test_manual_slot_activation_and_persistence(ota_host_fixture: OTAHost):
     """
-    Test 1: Verifies the 'activate' command correctly changes the active slot
-    and that the setting persists across a reboot.
+    Test 1: Verifies 'activate' command changes the active slot and it persists on reboot.
     """
     test_name = "test_manual_slot_activation_and_persistence"
     print(BLUE + BOLD + f"\n{'~'*10} STARTING TEST: {test_name} {'~'*10}" + RESET)
@@ -212,8 +45,7 @@ async def test_manual_slot_activation_and_persistence(ota_host_fixture: OTAHost)
 @pytest.mark.asyncio
 async def test_erase_inactive_slot_and_verify(ota_host_fixture: OTAHost):
     """
-    Test 2: Verifies that erasing an inactive slot marks it as invalid
-    without affecting the active slot.
+    Test 2: Verifies erasing an inactive slot marks it as invalid without affecting the active slot.
     """
     test_name = "test_erase_inactive_slot_and_verify"
     print(BLUE + BOLD + f"\n{'~'*10} STARTING TEST: {test_name} {'~'*10}" + RESET)
@@ -247,8 +79,7 @@ async def test_erase_inactive_slot_and_verify(ota_host_fixture: OTAHost):
 @pytest.mark.asyncio
 async def test_protection_against_erasing_active_slot(ota_host_fixture: OTAHost):
     """
-    Test 3 (Corrected): Verifies the bootloader's safety feature
-    that prevents a user from erasing the currently active slot.
+    Test 3: Verifies the bootloader prevents erasing the currently active slot.
     """
     test_name = "test_protection_against_erasing_active_slot"
     print(BLUE + BOLD + f"\n{'~'*10} STARTING TEST: {test_name} {'~'*10}" + RESET)
@@ -276,14 +107,12 @@ async def test_protection_against_erasing_active_slot(ota_host_fixture: OTAHost)
 @pytest.mark.asyncio
 async def test_memory_content_after_erase_and_ota(ota_host_fixture: OTAHost):
     """
-    Test 4: Uses the 'print' command to verify flash memory integrity after
-    an 'erase' operation and a subsequent OTA update.
+    Test 4: Uses 'print' to verify memory after 'erase' and a subsequent OTA.
     """
     test_name = "test_memory_content_after_erase_and_ota"
     print(BLUE + BOLD + f"\n{'~'*10} STARTING TEST: {test_name} {'~'*10}" + RESET)
     host = ota_host_fixture
     
-    # === FIX: Dynamically determine the inactive slot ===
     active_slot = await host.get_active_slot()
     assert active_slot in [0, 1], f"Could not determine active slot, got: {active_slot}"
     slot_to_test = 1 if active_slot == 0 else 0
@@ -293,7 +122,6 @@ async def test_memory_content_after_erase_and_ota(ota_host_fixture: OTAHost):
     assert await host.send_text_command(f"erase {slot_to_test}", "Boot config updated to mark slot as invalid"), \
         "Erase command did not complete successfully."
     
-    # 1. Verify that the memory is filled with 0xFFFFFFFF after erase
     print(f"Printing memory of slot {slot_to_test} to verify it was erased...")
     erased_words = await get_slot_memory_words(host, slot_to_test)
     assert erased_words is not None, "Failed to get memory words for erased slot."
@@ -303,7 +131,6 @@ async def test_memory_content_after_erase_and_ota(ota_host_fixture: OTAHost):
         f"Memory not fully erased. Expected all 0x{expected_erased_word:X}, got {erased_words}"
     print(GREEN + "SUCCESS: Memory is confirmed to be erased (0xFFFFFFFF)." + RESET)
 
-    # 2. Perform an OTA to the erased slot and verify the new content
     print(f"Performing OTA to slot {slot_to_test}...")
     fw_path = VALID_FW_B_SLOTB if slot_to_test == 1 else VALID_FW_B_SLOTA
     sig_path = VALID_SIG_B_SLOTB if slot_to_test == 1 else VALID_SIG_B_SLOTA
@@ -326,17 +153,26 @@ async def test_memory_content_after_erase_and_ota(ota_host_fixture: OTAHost):
 @pytest.mark.asyncio
 async def test_reflashing_valid_inactive_slot(ota_host_fixture: OTAHost):
     """
-    Test 5: Verifies the standard update path of re-flashing an inactive slot
-    that already contains a valid firmware with a NEW version.
+    Test 5: Verifies re-flashing an inactive slot that already contains valid firmware.
     """
     test_name = "test_reflashing_valid_inactive_slot"
     print(BLUE + BOLD + f"\n{'~'*10} STARTING TEST: {test_name} {'~'*10}" + RESET)
     host = ota_host_fixture
     
+    # After the initial OTA in the fixture, Slot 0 should be active.
+    # To make this robust, we check and then target the inactive slot.
     active_slot = await host.get_active_slot()
     assert active_slot in [0, 1], f"Could not determine active slot, got: {active_slot}"
     slot_to_reflash = 1 if active_slot == 0 else 0
     
+    # We need to perform one more OTA to ensure the inactive slot is valid before we test re-flashing it.
+    # The fixture ensures a clean boot, but this test requires a valid inactive image.
+    print("Performing one OTA to ensure inactive slot has a valid image...")
+    assert await perform_simple_ota(host, "path/to/initial/firmware.bin", "path/to/initial/firmware.sig") # Replace with a known starting FW
+    active_slot = await host.get_active_slot() # Re-check active slot
+    slot_to_reflash = 1 if active_slot == 0 else 0
+
+
     print(f"Active slot is {active_slot}. Getting initial state of inactive slot {slot_to_reflash}...")
     initial_info = await get_bootloader_info(host)
     slot_key = f"slot_{'b' if slot_to_reflash == 1 else 'a'}"
@@ -348,7 +184,7 @@ async def test_reflashing_valid_inactive_slot(ota_host_fixture: OTAHost):
     fw_path = VALID_FW_B_SLOTB if slot_to_reflash == 1 else VALID_FW_B_SLOTA
     sig_path = VALID_SIG_B_SLOTB if slot_to_reflash == 1 else VALID_SIG_B_SLOTA
     
-    # Calculate the expected CRC from the file before sending
+    from ota_host import crc32 # crc32 is in ota_host, not conftest
     with open(fw_path, "rb") as f:
         expected_crc = crc32(f.read())
     print(f"Expected final CRC from '{os.path.basename(fw_path)}' is 0x{expected_crc:X}")
@@ -363,14 +199,9 @@ async def test_reflashing_valid_inactive_slot(ota_host_fixture: OTAHost):
     assert final_info and slot_key in final_info, f"Could not get final info for Slot {slot_to_reflash}."
     
     final_crc_str = final_info[slot_key].get('fw_crc')
-    
-    # 1. Assert that the CRC value actually changed. If this fails, it means your
-    #    Firmware A and Firmware B files are identical.
     assert final_crc_str != initial_crc, \
         f"Firmware CRC did not change after re-flashing. Your '{os.path.basename(fw_path)}' may be identical to the original firmware."
 
-    # 2. Assert that the new CRC on the device matches the expected value we calculated from the file.
-    #    If this fails, it points to a bug in the bootloader's metadata writing.
     final_crc_int = int(final_crc_str, 16)
     assert final_crc_int == expected_crc, \
         f"Final CRC 0x{final_crc_int:X} does not match expected CRC 0x{expected_crc:X}"
