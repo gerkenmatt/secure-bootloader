@@ -8,7 +8,7 @@ from ota_host import OTAHost, crc32
 
 # --- Test Configuration  ---
 DEVICE_NAME = "ESP32_OTA_BLE"
-TEST_FW_DIR = "../../test_data/"
+TEST_FW_DIR = "../test_data/"
 
 # Using Firmware A for these tests as a representative valid firmware
 VALID_FW_A_SLOTA = os.path.join(TEST_FW_DIR, "firmware_A_slota.bin")
