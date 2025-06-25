@@ -15,7 +15,7 @@ from ota_host import (
 
 # --- Test Configuration ---
 DEVICE_NAME = "ESP32_OTA_BLE"
-TEST_FW_DIR = "../test_data/test_firmware"
+TEST_FW_DIR = "../../test_data/"
 
 VALID_FW_A_NAME = "firmware_A"
 VALID_FW_B_NAME = "firmware_B" # Was firmware_small, remapped to firmware_B from file list
