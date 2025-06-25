@@ -1,0 +1,4 @@
+bleak
+pyserial
+pytest
+pytest_asyncio

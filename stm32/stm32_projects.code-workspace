@@ -1,0 +1,13 @@
+{
+    "folders": [
+		{
+			"path": "applications/uart_app"
+		},
+		{
+			"path": "applications/blinky_app"
+		},
+		{
+			"path": "bootloader"
+		}
+	]
+}
