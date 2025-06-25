@@ -1,7 +1,0 @@
-{
-    "folders": [
-        {
-            "path": "../stm32/bootloader/secure_bootloader"
-        }
-    ]
-}
