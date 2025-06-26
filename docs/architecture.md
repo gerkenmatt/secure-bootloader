@@ -91,7 +91,53 @@ The architecture is divided into the following logical components:
 The following diagrams illustrate the key operational sequences.
 
 ### 5.1. Boot and Application Launch Sequence
+```mermaid
+sequenceDiagram
+    participant Power
+    participant Bootloader
+    participant User
+    participant Flash
+    participant Application
 
+    Power->>Bootloader: Power On / Reset
+
+    rect rgb(200, 230, 255)
+        Bootloader->>Bootloader: Initialize System (HW, Peripherals)
+        Bootloader->>Bootloader: Validate Boot Environment (VTOR, Aliasing)
+        Bootloader->>Flash: Read boot_config_t
+        alt Magic number is invalid
+            Bootloader->>Flash: Write default config (Slot A active)
+        end
+    end
+
+    Bootloader->>User: "Bootloader ready. Waiting for command..."
+    loop In BL_STATE_READY
+        User-->>Bootloader: (Processes CLI input, e.g., 'info', 'status')
+    end
+
+    User->>Bootloader: "run" command
+
+    rect rgb(200, 255, 200)
+        Bootloader->>Flash: Read boot_config_t
+        opt If active slot has 0 boot attempts
+            Bootloader->>Flash: Set other slot as active, reset its counter
+        end
+
+        Bootloader->>Flash: Decrement boot_attempts_remaining & write config
+        Bootloader->>Flash: Read application binary from active slot
+        Bootloader->>Bootloader: Verify CRC32 of application
+        alt CRC check fails
+            Bootloader->>Bootloader: Go to Error State
+        end
+
+        Bootloader->>Application: De-init peripherals, set VTOR, set SP
+        Bootloader->>Application: Jump to Application Entry Point
+
+        Note right of Application: Application MUST \nreset the boot counter \nin flash to confirm \nit booted successfully.
+    end
+
+
+```
 ### 5.2. OTA Firmware Update Sequence
 This diagram shows the interaction between a host update tool and the bootloader to install new firmware.
 
