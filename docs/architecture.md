@@ -133,7 +133,7 @@ sequenceDiagram
         Bootloader->>Application: De-init peripherals, set VTOR, set SP
         Bootloader->>Application: Jump to Application Entry Point
 
-        Note right of Application: Application MUST \nreset the boot counter \nin flash to confirm \nit booted successfully.
+        Note right of Application: Application MUST <br>reset the boot counter <br>in flash to confirm <br>it booted successfully.
     end
 
 
