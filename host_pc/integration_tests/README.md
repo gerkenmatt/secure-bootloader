@@ -4,7 +4,7 @@ This directory contains the automated integration test suite for the secure boot
 
 ---
 
-## 1. Frameworks and Tools
+## Frameworks and Tools
 
 The test suite uses the following Python libraries:
 
@@ -14,7 +14,7 @@ The test suite uses the following Python libraries:
 
 ---
 
-## 2. Test Suite Architecture
+## Test Suite Architecture
 
 The suite is structured into several key files:
 
@@ -64,7 +64,7 @@ Tests for bootloader CLI slot commands.
 
 ---
 
-## 3. Prerequisites
+## Prerequisites
 
 - **Hardware**:
   - STM32 device flashed with secure bootloader.
@@ -73,7 +73,7 @@ Tests for bootloader CLI slot commands.
 
 ---
 
-## 4. How to Run the Tests
+## How to Run the Tests
 
 ### Step 1: Create a Virtual Environment (Recommended)
 It is highly recommended to use a Python virtual environment to manage project dependencies and avoid conflicts with system-wide packages. From the host_pc directory:
@@ -112,7 +112,7 @@ To run a specific test:
 python -m pytest -s -k test_manual_slot_activation
 ```
 
-## 5. Understanding the Test Output
+## Understanding the Test Output
 The test output uses a color-coded logging scheme to improve readability:
 
 - **SETUP / TEARDOWN:** Indicates when the ota_host_fixture is connecting or disconnecting.
