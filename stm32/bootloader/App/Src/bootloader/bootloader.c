@@ -162,10 +162,10 @@ void bootloader_jump_to_active_application(void)
             config_changed = true;
             
             // Write the single change and reboot to try the new config cleanly.
-            LOG_INFO("Rolling back to slot %d. Writing new config and rebooting.", fallback_slot);
+            LOG_INFO("Rolling back to slot %d. Writing new config.", fallback_slot);
             write_boot_config(&new_cfg);
-            NVIC_SystemReset();
-            return; // Should not be reached
+            current_slot = fallback_slot;
+            return; 
         }
         else
         {
@@ -199,10 +199,9 @@ void bootloader_jump_to_active_application(void)
 
     if (!verify_crc(jump_address, active_slot_meta->fw_size, active_slot_meta->fw_crc))
     {
-        LOG_ERROR("CRC check failed for active slot. Rebooting.");
-        // The boot attempt was already consumed. The next boot will either try again or roll back.
-        NVIC_SystemReset();
-        return; // Should not be reached
+        LOG_ERROR("CRC check failed for active slot.");
+        bootloader_set_state(BL_STATE_ERROR);
+        return; 
     }
 
     LOG_INFO("Boot counter decremented. CRC OK. Jumping to application in slot %d.", current_slot);

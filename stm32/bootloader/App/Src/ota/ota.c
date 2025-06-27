@@ -35,7 +35,7 @@ typedef enum {
     OTA_STATE_STARTED, 
     OTA_STATE_RECEIVING_DATA, 
     OTA_STATE_AWAITING_VERIFICATION 
-} ota_process_state_t;
+} ota_process_state_t; 
 
 // -----------------------------------------------------------------------------
 // Data Structures
