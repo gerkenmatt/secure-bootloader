@@ -47,7 +47,6 @@ This project was developed with a focus on a lightweight, IDE-independent toolch
 │   ├── bootloader                       <- The core STM32 Secure Bootloader firmware project
 │   └── applications                     <- Example application firmware for the bootloader (e.g., blinky, UART echo)
 ├── development_projects               <- Older iterations or proof-of-concept projects that were stepping stones
-└── generated_artifacts                <- Output binaries (.bin, .sig) from the main build processes
 ```
 
 ## Getting Started: System Setup
