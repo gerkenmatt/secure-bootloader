@@ -1,9 +1,37 @@
 #include "stm32f767xx.h"
 
-// --- SysTick Globals and Functions ---
+
+// magic number and the backup register to use for signaling boot success
+#define BOOT_SUCCESS_MAGIC      0xDEADBEEF
+#define BOOT_SUCCESS_BKP_REG    RTC_BKP_DR1 // Use Backup Register 1
+
 
 // This global variable will be incremented by the SysTick ISR.
 static volatile uint32_t systick_ms_counter = 0;
+
+/**
+ * @brief Signals to the bootloader that the application has booted successfully.
+ */
+void signal_boot_success(void)
+{
+    // 1. Enable the Power Interface Controller (PWR) clock.
+    // The DBP (Disable Backup Protection) bit is in the PWR domain.
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+
+    // 2. Disable backup domain protection.
+    // This allows writing to the RTC backup registers.
+    PWR->CR1 |= PWR_CR1_DBP;
+
+    // It's good practice to wait until the bit is actually set.
+    while ((PWR->CR1 & PWR_CR1_DBP) == 0);
+
+    // 3. Write the magic number directly to Backup Register 1 (BKP1R).
+    // The RTC peripheral does not need to be clocked or running for this.
+    RTC->BKP1R = BOOT_SUCCESS_MAGIC;
+
+    // 4. (Optional) Re-enable backup domain protection.
+    PWR->CR1 &= ~PWR_CR1_DBP;
+}
 
 /**
  * @brief The SysTick interrupt handler, called automatically every 1ms.
@@ -62,6 +90,8 @@ int main(void)
     // Configure PB0 (Green), PB7 (Blue), and PB14 (Red) as outputs.
     GPIOB->MODER &= ~((3UL << (0 * 2)) | (3UL << (7 * 2)) | (3UL << (14 * 2)));
     GPIOB->MODER |= ((1UL << (0 * 2)) | (1UL << (7 * 2)) | (1UL << (14 * 2)));
+
+    signal_boot_success();
 
     while (1) 
 	{

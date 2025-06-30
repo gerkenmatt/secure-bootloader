@@ -174,7 +174,7 @@ async def main():
             print(CYAN + BOLD + "\r\nConnected. Type: update <name>, status, send <msg>, quit\n" + RESET)
             while True:
                 PROMPT = f"{CYAN}{BOLD}➜ {RESET}"
-                cmd = (await asyncio.to_thread(input, PROMPT)).strip().lower()
+                cmd = (await asyncio.to_thread(input, PROMPT)).strip()
 
                 if cmd in ("exit", "quit", "q"):
                     break

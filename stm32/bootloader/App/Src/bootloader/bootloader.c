@@ -18,6 +18,8 @@
 
 #include <string.h>
 
+#define BOOT_SUCCESS_MAGIC      0xDEADBEEF
+
 // -----------------------------------------------------------------------------
 // Module-Private Data (Static Globals)
 // -----------------------------------------------------------------------------
@@ -139,6 +141,31 @@ void bootloader_jump_to_active_application(void)
 
     bool config_changed = false;
     slot_index_t current_slot = new_cfg.active_slot;
+
+    // --- CHECK FOR SUCCESSFUL BOOT
+    // Enable PWR clock to access backup domain control.
+    RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+    
+    // Disable backup protection to read/write RTC backup registers.
+    PWR->CR1 |= PWR_CR1_DBP;
+    while ((PWR->CR1 & PWR_CR1_DBP) == 0);
+
+    // Read the backup register and check for the magic number.
+    if (RTC->BKP1R == BOOT_SUCCESS_MAGIC)
+    {
+        LOG_INFO("Success signal from previous boot detected.");
+
+        // Reset the boot attempts for the currently active slot.
+        new_cfg.slot[current_slot].boot_attempts_remaining = BOOT_ATTEMPT_COUNT;
+        config_changed = true;
+
+        // Clear the magic number so the next boot must prove itself again.
+        RTC->BKP1R = 0x00000000;
+    }
+    
+    // Re-enable backup protection.
+    PWR->CR1 &= ~PWR_CR1_DBP;
+
 
     // 1. --- DECIDE ---
     // Perform all logic checks first before writing to flash.
