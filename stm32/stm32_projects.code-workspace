@@ -9,5 +9,10 @@
 		{
 			"path": "bootloader"
 		}
-	]
+	],
+	"settings": {
+		"files.associations": {
+			"stm32f767xx.h": "c"
+		}
+	}
 }

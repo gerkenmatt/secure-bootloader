@@ -8,11 +8,9 @@ GDB = arm-none-eabi-gdb
 # Directories
 BUILD_DIR = build
 SRC_DIR = .
-INCLUDE_DIRS = -I$(HOME)/STM32CubeF7/Drivers/STM32F7xx_HAL_Driver/Inc \
-               -I$(HOME)/STM32CubeF7/Drivers/CMSIS/Device/ST/STM32F7xx/Include \
-               -I$(HOME)/STM32CubeF7/Drivers/CMSIS/Include
+INCLUDE_DIRS = -ISTM32F767_Includes
 
-# --- Compilation and Linker Flags ---
+# Compilation and Linker Flags 
 CFLAGS  := -mcpu=cortex-m7 -mthumb -O1 -g -ggdb -Wall -DSTM32F767xx $(INCLUDE_DIRS)
 LDFLAGS := -T stm32f767z.ld -Wl,--gc-sections
 

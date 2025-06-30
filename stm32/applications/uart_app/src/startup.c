@@ -1,3 +1,4 @@
+#include "stm32f7xx.h"
 extern int main(void);
 
 /* Symbols defined in the linker script */

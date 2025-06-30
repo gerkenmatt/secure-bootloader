@@ -13,6 +13,7 @@ CORE_SRC_DIR    := Core/Src
 APP_SRC_DIR     := App/Src
 DRIVERS_SRC_DIR := Drivers/Src
 MBEDTLS_DIR     := lib/mbedtls
+STM32LIB_DIR	:= lib/STM32F767_Includes
 
 # Include Paths 
 INC_PATHS := \
@@ -22,8 +23,7 @@ INC_PATHS := \
 	-IApp/Inc/ota	\
 	-IApp/Inc/common	\
 	-IDrivers/Inc/	\
-	-I$(HOME)/STM32CubeF7/Drivers/CMSIS/Device/ST/STM32F7xx/Include \
-	-I$(HOME)/STM32CubeF7/Drivers/CMSIS/Include \
+	-I$(STM32LIB_DIR) \
 	-I$(MBEDTLS_DIR)/include # mbedTLS include
 
 # Source Files        

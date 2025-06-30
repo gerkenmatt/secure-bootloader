@@ -34,6 +34,12 @@ This project was developed with a focus on a lightweight, IDE-independent toolch
 - **Build System:** The STM32 projects are built using CMake and Makefiles.
 - **Bare-Metal Approach:** The STM32 firmware is written directly at the **register access level**. It **does not use the STM32 HAL libraries**. This approach was chosen to gain a deeper understanding of the hardware and to produce more efficient, transparent code.
 
+### Prerequisites
+- This project was built on Linux OS
+- VS Code should be installed
+- install arm-none-eabi-gcc
+
+
 ## Repository Structure
 
 ```
