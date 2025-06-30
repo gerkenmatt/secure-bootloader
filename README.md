@@ -38,6 +38,25 @@ This project was developed with a focus on a lightweight, IDE-independent toolch
 - This project was built on Linux OS
 - VS Code should be installed
 - install arm-none-eabi-gcc
+- install openocd
+	- **Note:** to get openocd to work correctly with STLink, you may need to add `udev` rules: 
+		1. Create a new udev rule file. Open a terminal and create a new file in the /etc/udev/rules.d/ directory
+			```bash
+			sudo nano /etc/udev/rules.d/99-stlink.rules
+			```
+		2. Add the ST-Link rule. Copy and paste the following lines into the file. These rules cover most STMicroelectronics debugger devices.
+		```
+		# ST-Link/V2, ST-Link/V2-1
+		ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3748", MODE="0666"
+		ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", MODE="0666"
+		ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3752", MODE="0666"
+		```
+		3. Reload the udev rules. For the changes to take effect, you need to reload the udev rules.
+		```
+		sudo udevadm control --reload-rules
+		sudo udevadm trigger
+		```
+		4. Re-plug the device. Unplug your ST-Link and plug it back in.
 
 
 ## Repository Structure
