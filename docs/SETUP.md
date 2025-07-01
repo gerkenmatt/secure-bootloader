@@ -2,6 +2,15 @@
 
 This guide provides a comprehensive, step-by-step walkthrough to get the entire STM32 Secure Bootloader project up and running. Follow these instructions sequentially to configure your hardware, set up the development environment, and perform your first secure firmware update.
 
+## Table of Contents
+
+1. [Environment Setup](#1-environment-setup)
+2. [Hardware Setup](#2-hardware-setup)
+3. [Initial Firmware Flashing](#3-initial-firmware-flashing)
+4. [First OTA Update: A Step-by-Step Workflow](#4-first-ota-update-a-step-by-step-workflow)
+5. [Running Automated Integration Tests](#5-running-automated-integration-tests)
+
+
 ## 1. Environment Setup
 
 These steps configure your host computer with the necessary tools to build, flash, and communicate with the embedded devices.
