@@ -57,8 +57,14 @@ $(TARGET): $(OBJS) $(MBEDTLS_LIB) | $(BUILD_DIR)
 
 # Linking Rule
 $(MBEDTLS_LIB):
-	@echo "--- Building mbedtls library ---"
-	$(MAKE) -C $(MBEDTLS_DIR)
+	@echo "--- Configuring and Building mbedtls library for ARM ---"
+	# Use the toolchain file from your project's cmake directory
+	cd $(MBEDTLS_DIR) && cmake -S . -B build \
+		-DCMAKE_TOOLCHAIN_FILE=../../cmake/arm-none-eabi.cmake \
+		-DENABLE_PROGRAMS=OFF \
+		-DENABLE_TESTING=OFF \
+		-DCMAKE_BUILD_TYPE=MinSizeRel
+	$(MAKE) -C $(MBEDTLS_DIR)/build
 
 # Compile source files
 $(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
@@ -75,7 +81,7 @@ clean:
 	@echo "--- Cleaning project files ---"
 	rm -rf $(BUILD_DIR)
 	@echo "--- Cleaning mbedtls library ---"
-	$(MAKE) -C $(MBEDTLS_DIR) clean
+	rm -rf $(MBEDTLS_DIR)/build
 
 # Flash target
 flash: $(TARGET)

@@ -36,7 +36,7 @@ This project was developed with a focus on a lightweight, IDE-independent toolch
 
 ### Prerequisites
 - This project was built on Linux OS
-- VS Code should be installed
+- VS-Code can be installed to navigate through the `stm32` workspace
 - install arm-none-eabi-gcc
 - install openocd
 	- **Note:** to get openocd to work correctly with STLink, you may need to add `udev` rules: 
@@ -57,6 +57,11 @@ This project was developed with a focus on a lightweight, IDE-independent toolch
 		sudo udevadm trigger
 		```
 		4. Re-plug the device. Unplug your ST-Link and plug it back in.
+	- make sure to initialize the submodules
+		```bash
+		git submodule init
+		git submodule update --init --recursive
+		```
 
 
 ## Repository Structure
