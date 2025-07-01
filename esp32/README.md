@@ -11,4 +11,4 @@ This setup allows for Over-the-Air (OTA) updates and interaction with the bootlo
 
 ## Getting Started
 All details regarding the ESP32 project's functionality, features, hardware wiring, and build instructions are located in its dedicated README file.
-For full details, please see: [./esp32_ota_ble_bridge/README.md](./esp_ota_ble_bridge/README.md)
+For full details, please see: [./esp32_ota_ble_bridge/README.md](./esp32_ota_ble_bridge/README.md)
