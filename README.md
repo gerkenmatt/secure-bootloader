@@ -28,40 +28,60 @@ The system consists of three main components that communicate in a chain:
 The communication flow is as follows: 
 `[Host PC] <--- Bluetooth Low Energy (BLE) ---> [ESP32-WROOM] <--- UART ---> [STM32]`
 
-## Development Toolchain
-This project was developed with a focus on a lightweight, IDE-independent toolchain.
-- **Editor:** All code was written in Visual Studio Code.
-- **Build System:** The STM32 projects are built using CMake and Makefiles.
-- **Bare-Metal Approach:** The STM32 firmware is written directly at the **register access level**. It **does not use the STM32 HAL libraries**. This approach was chosen to gain a deeper understanding of the hardware and to produce more efficient, transparent code.
+## Environment Setup
+This project was developed on a Linux environment. While it can be adapted for macOS or Windows, the instructions below focus on a Linux-based setup.
 
-### Prerequisites
-- This project was built on Linux OS
-- VS-Code can be installed to navigate through the `stm32` workspace
-- install arm-none-eabi-gcc
-- install openocd
-	- **Note:** to get openocd to work correctly with STLink, you may need to add `udev` rules: 
-		1. Create a new udev rule file. Open a terminal and create a new file in the /etc/udev/rules.d/ directory
-			```bash
-			sudo nano /etc/udev/rules.d/99-stlink.rules
-			```
-		2. Add the ST-Link rule. Copy and paste the following lines into the file. These rules cover most STMicroelectronics debugger devices.
-		```
-		# ST-Link/V2, ST-Link/V2-1
-		ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3748", MODE="0666"
-		ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", MODE="0666"
-		ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3752", MODE="0666"
-		```
-		3. Reload the udev rules. For the changes to take effect, you need to reload the udev rules.
-		```
-		sudo udevadm control --reload-rules
-		sudo udevadm trigger
-		```
-		4. Re-plug the device. Unplug your ST-Link and plug it back in.
-	- make sure to initialize the submodules
-		```bash
-		git submodule init
-		git submodule update --init --recursive
-		```
+### 1. Development Toolchain
+
+You'll need the following tools installed on your system to build and flash the embedded firmware:
+
+- **Git**: For cloning the repository.
+- **ARM GCC Toolchain**: The `arm-none-eabi-gcc` cross-compiler is required to build the STM32 firmware.
+    ```bash
+    sudo apt-get install -y gcc-arm-none-eabi
+    ```
+
+- **Make**: The build system used for the STM32 projects.
+    ```bash
+    sudo apt-get install -y make
+    ```
+
+- **OpenOCD**: Used for in-circuit debugging and flashing the STM32.
+    ```bash
+    sudo apt-get install -y openocd
+    ```
+    - **Note:** to get `openocd` to work correctly with STLink, you may need to add `udev` rules:
+      	1. Create a rules file:
+    	```bash
+    	sudo nano /etc/udev/rules.d/99-stlink.rules
+    	```
+     	2. Add the following content:
+    	```
+    	# ST-Link/V2, ST-Link/V2-1, ST-Link/V3
+    	ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3748", MODE="0666"
+    	ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", MODE="0666"
+    	ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374d", MODE="0666"
+    	ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3752", MODE="0666"
+    	```
+     	3. Reload the udev rules and re-plug the device:
+    	```bash
+    	sudo udevadm control --reload-rules
+    	sudo udevadm trigger
+    	```
+### 2. Host PC Environment
+
+The host-side scripts for performing OTA updates and running tests require:
+
+- **Python**: Version 3.8 or newer is recommended.
+- **Bluetooth Adapter**: A functional Bluetooth adapter on your host PC.
+
+## 3. Initial Repository Setup
+
+After cloning, you must initialize the git submodules, which include dependencies like mbedtls.
+
+```bash
+git submodule update --init --recursive
+```
 
 
 ## Repository Structure
