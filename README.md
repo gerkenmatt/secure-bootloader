@@ -4,86 +4,6 @@ This project showcases a secure bootloader for an STM32 microcontroller, enablin
 
 The system uses an ESP32-WROOM module as a BLE-to-UART bridge, allowing a host PC to securely connect and send new firmware to the STM32. The host communicates using Python scripts that provide a command-line interface for interaction and are accompanied by a full suite of pytest integration tests.
 
-
-
-## Key Features
-
-- **Secure Firmware Update:** Implements ECDSA signature verification to ensure the authenticity and integrity of firmware before flashing, preventing unauthorized code execution and malicious tampering.
-- **Dual-Bank (A/B) Updates:** Supports atomic and fault-tolerant OTA updates by writing new firmware to an inactive bank, minimizing downtime and providing rollback capability.
-- **Over-the-Air (OTA) Capability:** Leverages BLE for wireless firmware delivery, bridging to UART for efficient communication with the STM32
-- **Bare-Metal Embedded C:** The STM32 bootloader is developed in C at the register access level, showcasing a deep understanding of microcontroller internals and efficient resource management without relying on HAL libraries.
-- **Embedded Cryptography:** Integrates mbedTLS for cryptographic operations, specifically for ECDSA signature verification.
-- **Dual-MCU Architecture:** Utilizes the STM32 for real-time application processing and the ESP32-WROOM for efficient wireless connectivity.
-- **Host-Side Automation & Testing:** Custom Python scripts provide a sophisticated command-line interface (CLI) for firmware management, accompanied by a full suite of Pytest integration tests for automated, end-to-end validation of the secure OTA flow.
-- **Automated Integration Testing:** Includes a test suite using pytest to validate the entire 
-
-## System Architecture
-
-The system consists of three main components that communicate in a chain:
-
-- **Host PC:** Runs the Python scripts to initiate and manage the OTA update.
-- **ESP32-WROOM:** Acts as a wireless bridge, receiving commands and firmware via BLE from the host and forwarding them over UART.
-- **STM32:** Runs the secure bootloader, receives data from the ESP32 via UART, validates the firmware's signature, and performs the flash programming.
-
-The communication flow is as follows: 
-`[Host PC] <--- Bluetooth Low Energy (BLE) ---> [ESP32-WROOM] <--- UART ---> [STM32]`
-
-## Environment Setup
-This project was developed on a Linux environment. While it can be adapted for macOS or Windows, the instructions below focus on a Linux-based setup.
-
-### 1. Development Toolchain
-
-You'll need the following tools installed on your system to build and flash the embedded firmware:
-
-- **Git**: For cloning the repository.
-- **ARM GCC Toolchain**: The `arm-none-eabi-gcc` cross-compiler is required to build the STM32 firmware.
-    ```bash
-    sudo apt-get install -y gcc-arm-none-eabi
-    ```
-
-- **Make**: The build system used for the STM32 projects.
-    ```bash
-    sudo apt-get install -y make
-    ```
-
-- **OpenOCD**: Used for in-circuit debugging and flashing the STM32.
-    ```bash
-    sudo apt-get install -y openocd
-    ```
-    - **Note:** to get `openocd` to work correctly with STLink, you may need to add `udev` rules:
-      	1. Create a rules file:
-    	```bash
-    	sudo nano /etc/udev/rules.d/99-stlink.rules
-    	```
-     	2. Add the following content:
-    	```
-    	# ST-Link/V2, ST-Link/V2-1, ST-Link/V3
-    	ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3748", MODE="0666"
-    	ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374b", MODE="0666"
-    	ATTRS{idVendor}=="0483", ATTRS{idProduct}=="374d", MODE="0666"
-    	ATTRS{idVendor}=="0483", ATTRS{idProduct}=="3752", MODE="0666"
-    	```
-     	3. Reload the udev rules and re-plug the device:
-    	```bash
-    	sudo udevadm control --reload-rules
-    	sudo udevadm trigger
-    	```
-### 2. Host PC Environment
-
-The host-side scripts for performing OTA updates and running tests require:
-
-- **Python**: Version 3.8 or newer is recommended.
-- **Bluetooth Adapter**: A functional Bluetooth adapter on your host PC.
-
-## 3. Initial Repository Setup
-
-After cloning, you must initialize the git submodules, which include dependencies like mbedtls.
-
-```bash
-git submodule update --init --recursive
-```
-
-
 ## Repository Structure
 
 ```
@@ -99,80 +19,75 @@ git submodule update --init --recursive
 ├── development_projects               <- Older iterations or proof-of-concept projects that were stepping stones
 ```
 
-## Getting Started: System Setup
 
-Follow these steps to set up the hardware and flash the necessary firmware.
+## Key Features
 
-### 1. Hardware Requirements
+- **Secure Firmware Update:** Implements ECDSA signature verification to ensure the authenticity and integrity of firmware before flashing, preventing unauthorized code execution and malicious tampering.
+- **Dual-Bank (A/B) Updates:** Supports atomic and fault-tolerant OTA updates by writing new firmware to an inactive bank, minimizing downtime and providing rollback capability.
+- **Over-the-Air (OTA) Capability:** Leverages BLE for wireless firmware delivery, bridging to UART for efficient communication with the STM32
+- **Bare-Metal Embedded C:** The STM32 bootloader is developed in C at the register access level, showcasing a deep understanding of microcontroller internals and efficient resource management without relying on HAL libraries.
+- **Embedded Cryptography:** Integrates mbedTLS for cryptographic operations, specifically for ECDSA signature verification.
+- **Dual-MCU Architecture:** Utilizes the STM32 for real-time application processing and the ESP32-WROOM for efficient wireless connectivity.
+- **Host-Side Automation & Testing:** Custom Python scripts provide a sophisticated command-line interface (CLI) for firmware management, accompanied by a full suite of Pytest integration tests for automated, end-to-end validation of the secure OTA flow.
+- **Automated Integration Testing:** Includes a test suite using pytest to validate the entire 
 
-- An STM32 NUCLEO-F767ZI Development Board
-- An ESP32-WROOM development board
-- A host computer with a Bluetooth adapter
-- Jumper wires for UART connections
+## System Architecture
+**[./docs/architecture.md](./docs/architecture.md)**: more details on system architecture
 
-### 2. Hardware Connections
+The system consists of three main components that communicate in a chain:
 
-Connect the STM32 and ESP32 boards via UART. Ensure both boards share a common ground (GND) and are powered at a compatible voltage level (e.g., 5V).
+- **Host PC:** Runs the Python scripts to initiate and manage the OTA update.
+- **ESP32-WROOM:** Acts as a wireless bridge, receiving commands and firmware via BLE from the host and forwarding them over UART.
+- **STM32:** Runs the secure bootloader, receives data from the ESP32 via UART, validates the firmware's signature, and performs the flash programming.
 
-| ESP32 Pin | STM32 Pin (example) | Description                  |
-|-----------|--------------------|------------------------------|
-| TX2       | RX (e.g., PA10)    | UART Transmit to Receive      |
-| RX2       | TX (e.g., PA9)     | UART Receive to Transmit      |
-| GND       | GND                | Common Ground                 |
-| Vin       | 5V                 | 5V Power                      |
+The communication flow is as follows: 
+`[Host PC] <--- Bluetooth Low Energy (BLE) ---> [ESP32-WROOM] <--- UART ---> [STM32]`
 
+## Getting Started 
 
-### 3. Firmware Flashing
+To get the project fully operational—from hardware wiring to performing your first secure OTA update—please follow the comprehensive guide provided in **[SETUP.md](./SETUP.md)**.
 
-You need to flash firmware onto both the ESP32 and the STM32.
-
-#### Flash the ESP32 Bridge
-
-1. Navigate to the `esp32/esp32_ble_bridge/` directory.
-2. Follow the instructions in its `README.md` to build and flash the project onto your ESP32-WROOM board using the PlatformIO or ESP-IDF toolchain.
-
-#### Flash the STM32 Secure Bootloader
-
-1. Navigate to `stm32/bootloader/`.
-2. Follow the instructions in its `README.md` to build and flash the secure bootloader onto your STM32 board.
-
-Once both boards are flashed and connected, the hardware setup is complete!
-
-## Usage: Performing an OTA Update
-
-All host-side operations are run from the `host_pc/` directory.
-
-### 1. Setup Python Environment
-
-It's recommended to use a virtual environment.
-
-```bash
-# Navigate to the host_pc directory
-cd host_pc
-
-# Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install required Python packages
-pip install -r requirements.txt
-```
-
-### 2. Run the OTA Host Script
-Execute the main host script to start the interactive command line. The script will automatically scan for and connect to the ESP32 BLE bridge.
-```bash
-python ota_client/ble_ota_client.py
-```
-You will be presented with a command-line interface where you can issue commands like `update <firmware_path>`, `run`, `reboot`, and more to interact with the STM32 bootloader.
-
-## Running Automated Tests
-The project includes integration tests to ensure the system works end-to-end.
-To run the tests, simply execute `pytest` from the `host_pc/integration_tests` directory:
-
-```bash
-cd host_pc/tests
-python -m pytest -s
-```
+The setup guide covers:
+1.  **Environment & Toolchain Installation**
+2.  **Hardware Wiring and Connections**
+3.  **Initial Firmware Flashing** (for both STM32 and ESP32)
+4.  **A Step-by-Step First OTA Update**
+5.  **Running the Automated Test Suite**
 
 The tests will automatically handle connecting to the device, sending various firmware (including valid, invalid, and large files), and verifying the bootloader's responses and behavior on the STM32.
 
+## Usage: Performing an OTA Update
+
+All host-side operations are managed from the `host_pc/` directory. After following the initial setup in `SETUP.md`, you can use the interactive client to manage the device.
+
+1.  **Activate the Python Environment:**
+    ```bash
+    # (From the project root)
+    source host_pc/venv/bin/activate
+    ```
+
+2.  **Run the OTA Client:**
+    The client automatically scans for and connects to the ESP32 BLE bridge.
+    ```bash
+    # (From the project root)
+    python host_pc/ota_client/ble_ota_client.py
+    ```
+
+3.  **Interact with the Bootloader:**
+    You will be presented with a command-line interface to issue commands like `update <firmware_name>`, `run`, `reboot`, and `help` to the STM32.
+
+---
+
+## Running Automated Tests
+
+The project includes a robust integration test suite to ensure the system works end-to-end. The tests automatically handle connecting to the device, sending various firmware payloads (valid, invalid, corrupted, etc.), and verifying the bootloader's behavior.
+
+To run the tests, execute `pytest` from the `host_pc/integration_tests` directory:
+
+```bash
+# Navigate to the integration tests directory
+cd host_pc/integration_tests
+
+# Ensure your Python venv is active
+python -m pytest -s
+```
