@@ -10,5 +10,6 @@ The primary function of this bridge is to enable wireless communication between 
 This setup allows for Over-the-Air (OTA) updates and interaction with the bootloader's command-line interface without requiring a physical USB connection to the STM32 board.
 
 ## Getting Started
-All details regarding the ESP32 project's functionality, features, hardware wiring, and build instructions are located in its dedicated README file.
-For full details, please see: [./esp32_ota_ble_bridge/README.md](./esp32_ota_ble_bridge/README.md)
+All details regarding the ESP32 project's functionality, features, hardware wiring, and build instructions are located [SETUP.md](../docs/SETUP.md)
+
+For full project details, please see: [./esp32_ota_ble_bridge/README.md](./esp32_ota_ble_bridge/README.md)
