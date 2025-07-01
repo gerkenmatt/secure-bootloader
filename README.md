@@ -76,6 +76,9 @@ All host-side operations are managed from the `host_pc/` directory. After follow
 3.  **Interact with the Bootloader:**
     You will be presented with a command-line interface to issue commands like `update <firmware_name>`, `run`, `reboot`, and `help` to the STM32.
 
+    **Example Interaction:**
+
+    ![OTA Client Output](./docs/ota_client_example.PNG)
 ---
 
 ## Running Automated Tests
