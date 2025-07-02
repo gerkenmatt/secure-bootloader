@@ -14,7 +14,11 @@
 // Module-Private Constants
 // -----------------------------------------------------------------------------
 
+// Calculate the number of defined flash sectors from the `sector_map` array.
 #define NUM_SECTORS (sizeof(sector_map) / sizeof(flash_sector_info_t))
+
+// Mask for the PSIZE bits in the FLASH_CR register, used to set programming parallelism.
+#define CR_PSIZE_MASK (~(FLASH_CR_PSIZE))
 
 // -----------------------------------------------------------------------------
 // Type Definitions
@@ -34,6 +38,7 @@ typedef struct
 // Module-Private Data (Static Globals)
 // -----------------------------------------------------------------------------
 
+// Defines the memory layout of the STM32F767ZI flash sectors.
 static const flash_sector_info_t sector_map[] = {
     // Sector, Address,     Size
     /* 0 */ { 0x08000000, (32 * 1024)   }, // 32 KB
@@ -85,109 +90,141 @@ static uint32_t get_size_for_sectors(uint8_t start_sector, uint8_t end_sector);
 
 flash_status_t program_flash(uint32_t addr, const uint32_t* p_data, uint32_t length_bytes)
 {
-    // The number of 32-bit words to program.
+    // Calculate the number of 32-bit words to program.
+    // Adds 3 and integer divides by 4 to correctly handle lengths not perfectly divisible by 4.
     uint32_t num_words = (length_bytes + 3) / 4;
 
-    for (uint32_t i = 0; i < num_words; i++) 
+    // Loop through each 32-bit word in the input data.
+    for (uint32_t i = 0; i < num_words; i++)
     {
-        uint32_t current_addr = addr + (i * 4);
-        uint32_t word_to_write = p_data[i];
+        uint32_t current_addr = addr + (i * 4);    // Calculate the flash address for the current word.
+        uint32_t word_to_write = p_data[i];        // Get the 32-bit word to write.
 
-        // Program the word to flash
+        // Program the current word to flash.
         flash_status_t write_status = program_flash_word(current_addr, word_to_write);
 
-        // Check the return status immediately.
-        if (write_status != FLASH_OK) 
+        // Check the return status immediately. If any error occurs during programming,
+        // stop and return that error.
+        if (write_status != FLASH_OK)
         {
             return write_status;
         }
 
-        // Verify the written data by reading it back.
+        // Verify the written data by reading it back from the flash memory.
+        // This ensures the data was programmed correctly.
         uint32_t verified_word = *(volatile uint32_t *)current_addr;
-        if (verified_word != word_to_write) 
+        if (verified_word != word_to_write)
         {
+            // If the read-back data does not match, return a verification error.
             return FLASH_ERROR_VERIFY;
         }
     }
 
+    // If all words were programmed and verified successfully, return OK.
     return FLASH_OK;
 }
 
 
-flash_status_t erase_flash_sectors(uint8_t start_sector, uint8_t end_sector) 
+flash_status_t erase_flash_sectors(uint8_t start_sector, uint8_t end_sector)
 {
-    // These could be looked up from a table based on the start_sector
+    // Get the actual physical start address and total size for the given sector range.
     uint32_t start_address = get_address_for_sector(start_sector);
     uint32_t size = get_size_for_sectors(start_sector, end_sector);
 
-    FLASH->CR &= CR_PSIZE_MASK;
-    FLASH->CR |= (0x2 << FLASH_CR_PSIZE_Pos); // Set program size to 32-bit
+    // Set the flash program/erase parallelism to 32-bit (word access).
+    // This setting dictates how many bits are written/erased in a single operation.
+    FLASH->CR &= CR_PSIZE_MASK; // Clear current PSIZE bits.
+    FLASH->CR |= (0x2 << FLASH_CR_PSIZE_Pos); // Set PSIZE to 32-bit.
 
-    for (uint8_t sector = start_sector; sector <= end_sector; sector++) 
+    // Iterate through each sector to be erased.
+    for (uint8_t sector = start_sector; sector <= end_sector; sector++)
     {
-        // Clear any previous error flags before starting
+        // Clear any pending error flags in the Flash Status Register (FLASH->SR)
+        // before starting a new erase operation. This prevents old errors from
+        // affecting the current operation's status check.
         clear_flash_errors();
 
-        FLASH->CR &= ~FLASH_CR_PG;
-        FLASH->CR &= ~FLASH_CR_SNB;
-        FLASH->CR |= FLASH_CR_SER | (sector << FLASH_CR_SNB_Pos);
-        FLASH->CR |= FLASH_CR_STRT;
+        // Clear the Programming (PG) bit and Sector Number (SNB) bits, then
+        // set the Sector Erase (SER) bit and specify the current sector to erase.
+        FLASH->CR &= ~FLASH_CR_PG; // Ensure programming mode is off.
+        FLASH->CR &= ~FLASH_CR_SNB; // Clear previous sector number selection.
+        FLASH->CR |= FLASH_CR_SER | (sector << FLASH_CR_SNB_Pos); // Enable sector erase and select sector.
+        FLASH->CR |= FLASH_CR_STRT; // Start the erase operation.
 
+        // Wait for the erase operation to complete. The Busy (BSY) flag clears when done.
         while (FLASH->SR & FLASH_SR_BSY);
 
-        // IMPORTANT: Check for hardware errors after the operation
-        if (FLASH->SR & (FLASH_SR_PGAERR | FLASH_SR_WRPERR | FLASH_SR_OPERR | FLASH_SR_PGPERR | FLASH_SR_ERSERR)) 
+        // IMPORTANT: Check for hardware errors after the erase operation.
+        // These flags indicate various types of programming/erase failures.
+        if (FLASH->SR & (FLASH_SR_PGAERR | FLASH_SR_WRPERR | FLASH_SR_OPERR | FLASH_SR_PGPERR | FLASH_SR_ERSERR))
         {
-            FLASH->CR &= ~FLASH_CR_SER; // Disable sector erase mode
-            return FLASH_ERROR_ERASE; // Return specific hardware erase error
+            FLASH->CR &= ~FLASH_CR_SER; // Disable sector erase mode.
+            return FLASH_ERROR_ERASE;   // Return a generic erase error.
         }
 
+        // Disable the Sector Erase (SER) bit after successful erase of the current sector.
         FLASH->CR &= ~FLASH_CR_SER;
     }
 
-    // Invalidate the Data Cache to ensure we read fresh data from flash
+    // Invalidate the Data Cache to ensure that subsequent reads from flash
+    // retrieve the newly erased (0xFFFFFFFF) data directly from flash,
+    // not from a stale cache entry.
     SCB_CleanDCache();
     SCB_InvalidateDCache();
-    __DSB();
-    __ISB();
+    __DSB(); // Data Synchronization Barrier: Ensures all outstanding memory accesses complete.
+    __ISB(); // Instruction Synchronization Barrier: Flushes the pipeline, ensuring new instructions fetch from updated memory.
 
-    // Verify sectors are fully erased (all 0xFF)
-    for (uint32_t i = 0; i < size / 4; i++) 
+    // Verify that the erased sectors are indeed filled with 0xFFFFFFFF.
+    // This is a post-erase integrity check.
+    for (uint32_t i = 0; i < size / 4; i++)
     {
-        if (((volatile uint32_t*)start_address)[i] != 0xFFFFFFFF) 
-            return FLASH_ERROR_ERASE_VERIFY;
+        if (((volatile uint32_t*)start_address)[i] != 0xFFFFFFFF)
+            return FLASH_ERROR_ERASE_VERIFY; // Return an error if verification fails.
     }
 
-    return FLASH_OK;
+    return FLASH_OK; // Return OK if all sectors were successfully erased and verified.
 }
 
-void unlock_flash(void) 
+void unlock_flash(void)
 {
-    if (FLASH->CR & FLASH_CR_LOCK) 
+    // Check if the Flash control register is currently locked.
+    // If it is, sequence the unlock key values to the FLASH_KEYR register.
+    // These specific key values are required by the STM32F7 for flash unlock.
+    if (FLASH->CR & FLASH_CR_LOCK)
     {
-        FLASH->KEYR = 0x45670123;
-        FLASH->KEYR = 0xCDEF89AB;
+        FLASH->KEYR = 0x45670123; // First key.
+        FLASH->KEYR = 0xCDEF89AB; // Second key.
     }
 }
 
-void lock_flash(void) 
+void lock_flash(void)
 {
-    FLASH->CR |= FLASH_CR_LOCK; 
+    // Set the LOCK bit in the Flash Control Register (FLASH_CR).
+    // This prevents accidental or unauthorized flash operations until explicitly unlocked.
+    FLASH->CR |= FLASH_CR_LOCK;
 }
 
-void flash_prepare_for_write(void) 
+void flash_prepare_for_write(void)
 {
+    // Unlock the flash controller to enable write and erase operations.
     unlock_flash();
+    // Clear any pending error flags from previous flash operations.
+    // This ensures a clean slate before starting new operations.
     clear_flash_errors();
 
-    // Set the programming size to 32 bits
-    FLASH->CR &= CR_PSIZE_MASK;
-    FLASH->CR |= (0x2 << FLASH_CR_PSIZE_Pos); // 32-bit programming size
-    FLASH->ACR |= (1 << 8) | (1 << 9); 
+    // Configure the programming parallelism for flash writes to 32-bit (word access).
+    // This typically optimizes write speed for 32-bit microcontrollers.
+    FLASH->CR &= CR_PSIZE_MASK; // Clear current PSIZE setting.
+    FLASH->CR |= (0x2 << FLASH_CR_PSIZE_Pos); // Set PSIZE to 32-bit.
+    // Enable Instruction and Data Caches (if not already enabled by system_init).
+    // These bits are set to ensure efficient data transfer to flash.
+    FLASH->ACR |= (1 << 8) | (1 << 9); // ICEN (Instruction Cache Enable) and DCEN (Data Cache Enable).
 }
 
-void clear_flash_errors(void) 
+void clear_flash_errors(void)
 {
+    // Clear all pending error flags in the Flash Status Register (FLASH->SR) by writing 1 to them.
+    // This is a necessary step before initiating new flash operations to accurately check for new errors.
     FLASH->SR |= FLASH_SR_PGPERR | FLASH_SR_WRPERR | FLASH_SR_PGAERR | FLASH_SR_OPERR | FLASH_SR_ERSERR;
 }
 
@@ -195,72 +232,95 @@ void clear_flash_errors(void)
 // Static Function Implementations
 // -----------------------------------------------------------------------------
 
-static bool program_flash_word(uint32_t addr, uint32_t word) 
+static bool program_flash_word(uint32_t addr, uint32_t word)
 {
-    // Check if address is 4-byte aligned
-    if (addr & 0x3) 
+    // Ensure the target address for programming is 4-byte aligned.
+    // Flash programming on STM32F7 usually requires word (32-bit) alignment.
+    if (addr & 0x3) // Check if the last two bits are non-zero.
     {
-        LOG_ERROR("Error: Address not 4-byte aligned\r\n");
+        LOG_ERROR("Error: Flash address 0x%08X not 4-byte aligned for programming.\r\n", (unsigned int)addr);
         return FLASH_ERROR_ALIGNMENT;
     }
 
-    // Wait for any ongoing flash operations to complete
+    // Wait until any ongoing flash operations (erase or program) are complete.
+    // The BSY (Busy) flag indicates if the flash controller is active.
     while (FLASH->SR & FLASH_SR_BSY);
-    
-    // Clear any previous error flags
+
+    // Clear any previously set error flags in the Flash Status Register.
     clear_flash_errors();
 
-    // Configure flash programming size to 32-bit
+    // Set the programming size to 32-bit (word programming).
+    // This configuration must match the size of data being written.
     FLASH->CR &= CR_PSIZE_MASK;
     FLASH->CR |= (0x2 << FLASH_CR_PSIZE_Pos);
-    
-    // Enable flash programming mode
+
+    // Enable the Programming (PG) bit in the Flash Control Register.
+    // This puts the flash controller into programming mode.
     FLASH->CR |= FLASH_CR_PG;
 
-    // Write the word to flash
+    // Write the 32-bit word to the specified flash address.
+    // The `__IO` (volatile) cast ensures the compiler performs a direct memory write.
     *(__IO uint32_t*)addr = word;
-    
-    // Data/Instruction barriers to ensure write completes
+
+    // Data Synchronization Barrier (DSB) and Instruction Synchronization Barrier (ISB)
+    // ensure that the write operation completes and the CPU's instruction pipeline
+    // is flushed, guaranteeing visibility of the new flash content.
     __DSB();
     __ISB();
 
-    // Wait for programming to complete
+    // Wait again for the programming operation to complete.
     while (FLASH->SR & FLASH_SR_BSY);
 
-    // Check for any programming errors
-    if (FLASH->SR & (FLASH_SR_PGAERR | FLASH_SR_WRPERR | FLASH_SR_OPERR | FLASH_SR_PGPERR | FLASH_SR_ERSERR)) 
+    // After the operation, check for any hardware programming errors.
+    // These flags indicate issues like write protection errors, alignment errors, etc.
+    if (FLASH->SR & (FLASH_SR_PGAERR | FLASH_SR_WRPERR | FLASH_SR_OPERR | FLASH_SR_PGPERR | FLASH_SR_ERSERR))
     {
-        LOG_ERROR("Error: Flash programming failed\r\n");
+        LOG_ERROR("Error: Flash programming failed at address 0x%08X. SR: 0x%08X\r\n",
+                  (unsigned int)addr, (unsigned int)FLASH->SR);
+        // Disable programming mode after an error.
         FLASH->CR &= ~FLASH_CR_PG;
-        // Report a generic write error
+        // Return a generic FLASH_ERROR status.
         return FLASH_ERROR;
     }
 
-    // Disable programming mode
+    // Disable programming mode after successful operation.
     FLASH->CR &= ~FLASH_CR_PG;
-    return FLASH_OK;
+    return FLASH_OK; // Return OK if the word was programmed successfully.
 }
 
 static uint32_t get_address_for_sector(uint8_t sector)
 {
-    // Bounds check the input against the size of our map
-    if (sector >= NUM_SECTORS) 
-        return 0; 
-    
+    // Perform a bounds check to ensure the requested sector number is valid.
+    if (sector >= NUM_SECTORS)
+    {
+        LOG_ERROR("Error: Invalid flash sector number requested: %u\r\n", (unsigned int)sector);
+        return 0; // Return 0 for an invalid sector, which is not a valid flash address.
+    }
+
+    // Return the starting address of the specified sector from the pre-defined map.
     return sector_map[sector].address;
 }
 
 static uint32_t get_size_for_sectors(uint8_t start_sector, uint8_t end_sector)
 {
     uint32_t total_size = 0;
-    if (end_sector < start_sector) 
-        return 0;
-
-    // Loop from the start to the end sector (inclusive)
-    for (uint8_t i = start_sector; i <= end_sector; i++) 
+    // Basic validation: ensure end sector is not before start sector.
+    if (end_sector < start_sector)
     {
-        // Add the size of each individual sector to the total
-        total_size +=  sector_map[i].size;
+        LOG_ERROR("Error: End sector (%u) is less than start sector (%u).\r\n", (unsigned int)end_sector, (unsigned int)start_sector);
+        return 0;
+    }
+    // Also check if sectors are within bounds of the defined map.
+    if (start_sector >= NUM_SECTORS || end_sector >= NUM_SECTORS) {
+        LOG_ERROR("Error: Sector range [%u, %u] out of bounds (max %u).\r\n", (unsigned int)start_sector, (unsigned int)end_sector, (unsigned int)(NUM_SECTORS - 1));
+        return 0;
+    }
+
+
+    // Iterate from the start sector to the end sector (inclusive) to sum their sizes.
+    for (uint8_t i = start_sector; i <= end_sector; i++)
+    {
+        total_size += sector_map[i].size; // Add the size of each individual sector.
     }
     return total_size;
 }

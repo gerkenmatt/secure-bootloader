@@ -18,11 +18,11 @@ void init_bootloader_config(void)
     cfg.magic = BOOT_CONFIG_MAGIC;
     cfg.active_slot = SLOTA; // Default to booting from Slot A
 
-    // Configure Slot A (assumed to hold a valid factory image)
+    // Configure Slot A as valid with initial boot attempts.
     cfg.slot[0].is_valid = 1; 
     cfg.slot[0].boot_attempts_remaining = BOOT_ATTEMPT_COUNT; 
-    cfg.slot[0].fw_size = 0; // Should be updated after initial flashing
-    cfg.slot[0].fw_crc = 0xFFFFFFFF; // Should be updated after initial flashing
+    cfg.slot[0].fw_size = 0;            // Should be updated after initial flashing
+    cfg.slot[0].fw_crc = 0xFFFFFFFF;    // Should be updated after initial flashing
 
     // Configure Slot B as initially empty/invalid
     cfg.slot[1].is_valid = 0;
@@ -49,7 +49,7 @@ bool write_boot_config(const bootloader_config_t* p_new_config)
 
     flash_prepare_for_write();
 
-    // Erase the config sector
+    // Erase the config sector before writing new data.
     if (erase_flash_sectors(CONFIG_SECTOR, CONFIG_SECTOR) != FLASH_OK) 
     
     {
@@ -57,7 +57,7 @@ bool write_boot_config(const bootloader_config_t* p_new_config)
         goto cleanup;
     }
 
-    // Write the new config struct to flash
+    // Program the new config struct to flash.
     if (program_flash(CONFIG_ADDR, (const uint32_t*)p_new_config, sizeof(bootloader_config_t)) != FLASH_OK) 
     {
         LOG_ERROR("Failed to write new config to flash!");
@@ -67,13 +67,14 @@ bool write_boot_config(const bootloader_config_t* p_new_config)
     success = true;
 
 cleanup: 
-    lock_flash();
+    lock_flash();   // Ensure flash is locked after operations.
     return success;
 
 }
 
 const bootloader_config_t* read_boot_config(void) 
 {
+    // Directly cast the fixed configuration address in flash.
     return (const bootloader_config_t*)CONFIG_ADDR;
 }
 

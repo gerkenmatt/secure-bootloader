@@ -19,6 +19,8 @@ extern void USART6_IRQHandler(void);
 extern void SysTick_Handler(void);
 
 /* Symbols defined in the linker script */
+// These symbols are provided by the linker script (.ld file) and represent
+// the start and end addresses of different memory sections.
 extern unsigned long _estack, _etext, _sdata, _edata, _sbss, _ebss;
 
 
@@ -26,20 +28,32 @@ extern unsigned long _estack, _etext, _sdata, _edata, _sbss, _ebss;
 // Handler Definitions
 // -----------------------------------------------------------------------------
 
-void Reset_Handler(void) 
+void Reset_Handler(void)
 {
+    // Copy initialized data from Flash to RAM (.data section).
+    // The linker script places initialized data in Flash starting at `_etext` (end of text section)
+    // and its RAM destination starts at `_sdata`.
     unsigned long *src = &_etext;
     unsigned long *dest = &_sdata;
-    while (dest < &_edata) 
+    while (dest < &_edata)
     {
         *dest++ = *src++;
     }
+
+    // Zero-fill the uninitialized data section (.bss section).
+    // This ensures that global and static variables not explicitly initialized
+    // by the programmer start with a known value of zero.
     dest = &_sbss;
-    while (dest < &_ebss) 
+    while (dest < &_ebss)
     {
         *dest++ = 0;
     }
+
+    // Call the main application entry point.
+    // This transfers control from the startup code to the application's C main function.
     main();
+
+    // This infinite loop acts as a fallback if `main` ever exits, preventing unpredictable behavior.
     while (1);
 }
 

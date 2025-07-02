@@ -23,7 +23,7 @@
 
 #define BOOTLOADER_START_PHYS     FLASH_BASE_ADDR
 #define BOOTLOADER_START_ALIAS    ITCM_FLASH_ADDR
-#define CONFIG_SECTOR             11                        //TODO: clean this up
+#define CONFIG_SECTOR             11                   
 #define CONFIG_ADDR               0x081C0000  
 
 // --- Application Slot Layout ---
